@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DALKO MyCRM — Proof of Concept</title>
+  <meta name="description" content="DALKO Resources MyCRM proof-of-concept — Leads, Prospects, Clients, Contacts, Campaigns, and Claims." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --blue: #0b183e;
+      --gold: #e0b752;
+      --gold-light: #f0d48a;
+      --gold-deep: #c9a043;
+      --table-tint: #e1e8fc;
+      --white: #ffffff;
+      --text: #1a1a2e;
+      --muted: #5a6278;
+      --font-body: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      --font-heading: Verdana, Geneva, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--text);
+      background: var(--white);
+      line-height: 1.6;
+    }
+
+    /* Top bar */
+    header {
+      background: var(--blue);
+      color: var(--white);
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .wordmark {
+      font-family: var(--font-heading);
+      font-weight: 700;
+      font-size: 1.35rem;
+    }
+
+    .wordmark .my { font-style: italic; }
+
+    header img {
+      height: 40px;
+      object-fit: contain;
+    }
+
+    /* Nav bar */
+    nav {
+      background: linear-gradient(180deg, var(--gold-light), var(--gold-deep));
+      padding: 0.6rem 1.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.25rem;
+    }
+
+    nav a {
+      font-family: var(--font-heading);
+      font-size: 0.85rem;
+      color: var(--blue);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    nav a:hover { text-decoration: underline; }
+
+    /* Hero */
+    .hero {
+      background: linear-gradient(135deg, var(--table-tint) 0%, var(--white) 60%);
+      padding: 3rem 1.5rem 2.5rem;
+      text-align: center;
+      border-bottom: 3px solid var(--gold);
+    }
+
+    .hero h1 {
+      font-family: var(--font-heading);
+      color: var(--blue);
+      font-size: clamp(1.75rem, 4vw, 2.5rem);
+      margin-bottom: 0.75rem;
+    }
+
+    .hero p {
+      max-width: 640px;
+      margin: 0 auto 1.5rem;
+      color: var(--muted);
+      font-size: 1.05rem;
+    }
+
+    .badge {
+      display: inline-block;
+      background: var(--blue);
+      color: var(--gold);
+      font-family: var(--font-heading);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      padding: 0.35rem 0.75rem;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+    }
+
+    .buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      justify-content: center;
+    }
+
+    .btn {
+      font-family: var(--font-heading);
+      font-size: 0.9rem;
+      font-weight: 700;
+      padding: 0.65rem 1.25rem;
+      border-radius: 4px;
+      text-decoration: none;
+      transition: opacity 0.15s;
+    }
+
+    .btn:hover { opacity: 0.88; }
+
+    .btn-primary {
+      background: var(--blue);
+      color: var(--white);
+    }
+
+    .btn-secondary {
+      background: var(--gold);
+      color: var(--blue);
+      border: 2px solid var(--gold-deep);
+    }
+
+    /* Features */
+    main { max-width: 960px; margin: 0 auto; padding: 2.5rem 1.5rem 3rem; }
+
+    h2 {
+      font-family: var(--font-heading);
+      color: var(--blue);
+      font-size: 1.25rem;
+      margin-bottom: 1.25rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid var(--gold);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .card {
+      background: var(--table-tint);
+      border: 1px solid #c5d0f0;
+      border-radius: 6px;
+      padding: 1.1rem 1.25rem;
+    }
+
+    .card h3 {
+      font-family: var(--font-heading);
+      color: var(--blue);
+      font-size: 0.95rem;
+      margin-bottom: 0.4rem;
+    }
+
+    .card p { font-size: 0.9rem; color: var(--muted); }
+
+    /* Run locally */
+    .run-box {
+      background: var(--blue);
+      color: var(--white);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .run-box h2 { color: var(--gold); border-bottom-color: var(--gold-deep); }
+
+    pre {
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 4px;
+      padding: 1rem;
+      overflow-x: auto;
+      font-size: 0.82rem;
+      line-height: 1.5;
+      margin-top: 0.75rem;
+    }
+
+    .run-box p { color: #c8d0e8; font-size: 0.92rem; margin-top: 0.5rem; }
+
+    footer {
+      background: var(--blue);
+      color: #9aa8c8;
+      text-align: center;
+      padding: 1.25rem;
+      font-size: 0.85rem;
+    }
+
+    footer a { color: var(--gold); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wordmark"><span class="my">My</span>CRM</div>
+    <img src="assets/Logo1.png" alt="DALKO Resources" />
+  </header>
+
+  <nav>
+    <a href="#features">Features</a>
+    <a href="#run">Run locally</a>
+    <a href="https://github.com/Tstowe0/DALKOCRM" target="_blank" rel="noopener">GitHub</a>
+  </nav>
+
+  <section class="hero">
+    <span class="badge">PROOF OF CONCEPT</span>
+    <h1>DALKO MyCRM</h1>
+    <p>
+      A clickable reference for the DALKO sales CRM — built from designer specs in the
+      Library folder. Leads through Claims, attachments, and the full MyCRM shell.
+    </p>
+    <div class="buttons">
+      <a class="btn btn-primary" href="https://github.com/Tstowe0/DALKOCRM" target="_blank" rel="noopener">View on GitHub</a>
+      <a class="btn btn-secondary" href="#run">Run the interactive demo</a>
+    </div>
+  </section>
+
+  <main>
+    <section id="features">
+      <h2>What's in the PoC</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Leads &amp; Prospects</h3>
+          <p>Pipeline boards, status flow, convert Lead → Prospect → Client.</p>
+        </div>
+        <div class="card">
+          <h3>Clients &amp; Contacts</h3>
+          <p>Client list with TMS status, company contacts with primary flag.</p>
+        </div>
+        <div class="card">
+          <h3>Campaigns &amp; Claims</h3>
+          <p>Campaign tracking and claims/disputes linked to clients.</p>
+        </div>
+        <div class="card">
+          <h3>Attachments</h3>
+          <p>Upload, rename, view, and delete files on company records.</p>
+        </div>
+        <div class="card">
+          <h3>MyCRM shell</h3>
+          <p>Top bar, gold nav, collapsible sections — per Design Rules.</p>
+        </div>
+        <div class="card">
+          <h3>Library-driven</h3>
+          <p>UI aligned to Word specs in the repo's Library folder.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="run" class="run-box">
+      <h2>Run the full interactive demo</h2>
+      <p>This site is the project homepage. The live app runs on your machine with Node.js:</p>
+      <pre>git clone https://github.com/Tstowe0/DALKOCRM.git
+cd DALKOCRM/Main
+npm install
+npm run db:seed
+npm run dev</pre>
+      <p>Then open <strong>http://localhost:3000</strong> — you'll land on the Leads board with sample data.</p>
+    </section>
+  </main>
+
+  <footer>
+    DALKO Resources &middot; MyCRM PoC &middot;
+    <a href="https://github.com/Tstowe0/DALKOCRM">github.com/Tstowe0/DALKOCRM</a>
+  </footer>
+</body>
+</html>
