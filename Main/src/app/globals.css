@@ -1,0 +1,44 @@
+@import url("https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Open+Sans:wght@400;600;700&family=Source+Sans+3:wght@600;700&display=swap");
+@import "tailwindcss";
+
+/*
+  Appearance swatches from Library mockups (color pickers in Appearance doc):
+  - Blue:        #0b183e
+  - Gold:        #e0b752
+  - Table tint:  #e1e8fc  (labeled Table Lines in the doc)
+  - Accent navy: #001d60  (additional picker in Appearance media)
+*/
+
+:root {
+  --color-blue: #0b183e;
+  --color-gold: #e0b752;
+  --color-gold-light: #edd078;
+  --color-gold-deep: #c49a3a;
+  --color-table-tint: #e1e8fc;
+  --color-table-line: #001d60;
+  --color-danger: #ff0000;
+  --color-white: #ffffff;
+  --background: #eef0f4;
+  --foreground: #0b183e;
+  /* General text, field labels */
+  --font-body: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  /* Headers, title bars, buttons */
+  --font-heading: Verdana, Geneva, sans-serif;
+  /* Spec: Bradley Hand ITC — Caveat is the web stand-in */
+  --font-brand-my: "Bradley Hand ITC", "Bradley Hand", "Caveat", cursive;
+  /* Spec: Myriad Pro — Source Sans 3 is the web stand-in */
+  --font-brand-crm: "Myriad Pro", "Source Sans 3", "Helvetica Neue", Helvetica,
+    Arial, sans-serif;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-body);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body);
+}

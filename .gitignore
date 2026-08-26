@@ -1,0 +1,27 @@
+# App build artifacts
+Main/node_modules/
+Main/.next/
+Main/out/
+Main/build/
+Main/.vercel/
+
+# Local PoC runtime data (recreated by db:seed)
+Main/data/
+Main/uploads/
+Main/*.sqlite
+Main/*.sqlite-*
+
+# Environment and secrets
+.env*
+*.pem
+
+# Logs and debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.tsbuildinfo
