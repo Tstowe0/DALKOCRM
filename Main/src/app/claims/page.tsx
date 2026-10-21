@@ -15,7 +15,7 @@ type SearchParams = Promise<{ companyId?: string }>;
 function listCompanyOptions() {
   const rows = getDb()
     .prepare(
-      `SELECT id, company_name FROM companies ORDER BY company_name COLLATE NOCASE`
+      `SELECT id, company_name FROM companies WHERE status = 'Client' ORDER BY company_name COLLATE NOCASE`
     )
     .all() as Array<{ id: string; company_name: string }>;
   return rows.map((r) => ({

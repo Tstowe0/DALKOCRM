@@ -94,11 +94,11 @@ export function getClaim(id: string): Claim | null {
 
 export function createClaim(
   companyId: string,
-  input: { type: string; topic: string; loadNo?: string }
+  input: { type: string; topic: string; loadNo?: string; actorName?: string }
 ): Claim {
   const now = new Date().toISOString();
   const id = newId("clm");
-  const by = DEMO_USER.fullName;
+  const by = input.actorName ?? DEMO_USER.fullName;
   getDb()
     .prepare(
       `INSERT INTO claims (
@@ -127,6 +127,7 @@ export function updateClaim(
     topic: string;
     loadNo?: string;
     companyId?: string;
+    actorName?: string;
   }
 ): Claim {
   const existing = getClaim(id);
@@ -144,7 +145,7 @@ export function updateClaim(
       input.type.trim(),
       input.topic.trim(),
       (input.loadNo ?? "").toUpperCase(),
-      DEMO_USER.fullName,
+      input.actorName ?? DEMO_USER.fullName,
       now,
       id
     );

@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from "react";
 import type { Contact } from "@/data/contacts";
+import {
+  POPUP_BTN_CANCEL,
+  POPUP_BTN_GOLD,
+  PopupWindow,
+} from "@/components/shell/PopupWindow";
 
-const btnGold =
-  "h-8 rounded bg-[var(--color-gold)] px-3 font-[family-name:var(--font-heading)] text-xs font-bold text-[var(--color-blue)]";
-const btnOutline =
-  "h-8 rounded border border-[var(--color-blue)]/25 bg-white px-3 text-xs font-semibold text-[var(--color-blue)]";
 const input =
   "w-full rounded border border-[var(--color-blue)]/25 px-2 py-1.5 text-sm outline-none focus:border-[var(--color-blue)]";
 
@@ -44,37 +45,36 @@ export function ContactLookupModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/45 p-4">
-      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded border border-[var(--color-blue)]/30 bg-white shadow-xl">
-        <div className="flex items-center justify-between bg-[var(--color-blue)] px-4 py-2.5 text-white">
-          <h2
-            className="text-sm font-bold"
-            style={{ fontFamily: "var(--font-heading)" }}
-          >
-            Contact Lookup
-          </h2>
-          <button type="button" className="text-lg leading-none" onClick={onClose}>
-            ×
-          </button>
-        </div>
-        <div className="space-y-3 border-b border-[var(--color-blue)]/10 px-4 py-3">
-          <p className="text-xs text-[var(--color-blue)]/60">
-            Company: <span className="font-semibold">{companyName}</span>
-          </p>
-          <label className="block text-sm">
-            <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
-              Search
-            </span>
-            <input
-              className={input}
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Name, email, title, phone"
-              autoFocus
-            />
-          </label>
-        </div>
-        <div className="min-h-0 flex-1 overflow-auto">
+    <PopupWindow
+      title="Contact Lookup"
+      zClass="z-[110]"
+      maxWidthClass="max-w-2xl"
+      padded={false}
+      onClose={onClose}
+      footer={
+        <button type="button" className={POPUP_BTN_CANCEL} onClick={onClose}>
+          Cancel
+        </button>
+      }
+    >
+      <div className="space-y-3 border-b border-[var(--color-blue)]/10 px-4 py-3">
+        <p className="text-xs text-[var(--color-blue)]/60">
+          Company: <span className="font-semibold">{companyName}</span>
+        </p>
+        <label className="block text-sm">
+          <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
+            Search
+          </span>
+          <input
+            className={input}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Name, email, title, phone"
+            autoFocus
+          />
+        </label>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto">
           <table className="w-full border-collapse text-left text-sm">
             <thead className="sticky top-0 bg-[#f7f8fb]">
               <tr className="border-b border-[var(--color-blue)]/20 text-[11px] uppercase tracking-wide text-[var(--color-blue)]/70">
@@ -105,7 +105,7 @@ export function ContactLookupModal({
                     <td className="px-4 py-2 text-right">
                       <button
                         type="button"
-                        className={btnGold}
+                        className={`${POPUP_BTN_GOLD} h-8 px-3 text-xs`}
                         onClick={() => {
                           onSelect(c);
                           onClose();
@@ -119,13 +119,7 @@ export function ContactLookupModal({
               )}
             </tbody>
           </table>
-        </div>
-        <div className="flex justify-end border-t border-[var(--color-blue)]/10 px-4 py-3">
-          <button type="button" className={btnOutline} onClick={onClose}>
-            Cancel
-          </button>
-        </div>
       </div>
-    </div>
+    </PopupWindow>
   );
 }

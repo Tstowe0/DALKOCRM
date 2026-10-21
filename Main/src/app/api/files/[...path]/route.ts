@@ -14,8 +14,13 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const resolved = path.normalize(path.join(UPLOADS_DIR, ...segments));
-  if (!resolved.startsWith(path.normalize(UPLOADS_DIR))) {
+  if (segments.some((s) => s === ".." || s.includes("/") || s.includes("\\"))) {
+    return NextResponse.json({ error: "Invalid path" }, { status: 400 });
+  }
+  const root = path.normalize(UPLOADS_DIR);
+  const resolved = path.normalize(path.join(root, ...segments));
+  const relative = path.relative(root, resolved);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
     return NextResponse.json({ error: "Invalid path" }, { status: 400 });
   }
   if (!fs.existsSync(resolved)) {

@@ -227,7 +227,7 @@ company({
   mailing_state: "PA",
   mailing_postal: "15222",
   physical_same_as_mailing: 1,
-  tms_status: "ACTIVE",
+  tms_status: "Active",
 });
 
 company({

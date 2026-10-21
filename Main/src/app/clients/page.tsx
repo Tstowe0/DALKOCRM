@@ -1,6 +1,12 @@
 import { LeadsBoard } from "@/components/leads/LeadsBoard";
 import { listClientRows, listSalespeople } from "@/data/companies";
-import { uploadAttachmentAction } from "@/app/leads/actions";
+import {
+  addCampaignAction,
+  addContactAction,
+  composeEmailAction,
+  createActivityAction,
+  uploadAttachmentAction,
+} from "@/app/leads/actions";
 import {
   deleteClientAction,
   importClientsCsvAction,
@@ -22,6 +28,10 @@ export default function ClientsPage() {
       uploadAttachmentAction={uploadAttachmentAction}
       deleteAction={deleteClientAction}
       massDeleteAction={massDeleteClientsAction}
+      composeEmailAction={composeEmailAction}
+      addContactAction={addContactAction}
+      addCampaignAction={addCampaignAction}
+      createActivityAction={createActivityAction}
     />
   );
 }

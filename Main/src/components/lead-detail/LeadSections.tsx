@@ -5,6 +5,19 @@ import { useRouter } from "next/navigation";
 import { MoreMenu } from "@/components/shell/MoreMenu";
 import { NewEmailModal } from "@/components/shell/NewEmailModal";
 import { ContactLookupModal } from "@/components/shell/ContactLookupModal";
+import { useDialog } from "@/components/shell/dialogs";
+import {
+  POPUP_BTN_CANCEL,
+  POPUP_BTN_PRIMARY,
+  PopupWindow,
+} from "@/components/shell/PopupWindow";
+import {
+  FieldError,
+  FieldLabel,
+  blockIfMissing,
+  inputClass,
+  missingRequired,
+} from "@/components/shell/formFields";
 import { SortTh, useSortableRows } from "@/components/shell/useSortableRows";
 import type { LeadEmail } from "@/data/emails";
 import type { Activity } from "@/data/activities";
@@ -58,31 +71,15 @@ function ModalShell({
   wide?: boolean;
 }) {
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
-      <div
-        className={`flex max-h-[90vh] w-full flex-col overflow-hidden rounded border border-[var(--color-blue)]/30 bg-white shadow-lg ${
-          wide ? "max-w-3xl" : "max-w-xl"
-        }`}
-      >
-        <div className="flex items-center justify-between bg-[var(--color-blue)] px-4 py-2 text-white">
-          <h2
-            className="text-sm font-bold"
-            style={{ fontFamily: "var(--font-heading)" }}
-          >
-            {title}
-          </h2>
-          <button type="button" className="text-lg leading-none" onClick={onClose}>
-            x
-          </button>
-        </div>
-        <div className="overflow-auto p-4">{children}</div>
-        {footer ? (
-          <div className="flex justify-end gap-2 border-t border-[var(--color-blue)]/10 px-4 py-3">
-            {footer}
-          </div>
-        ) : null}
-      </div>
-    </div>
+    <PopupWindow
+      title={title}
+      zClass="z-[100]"
+      maxWidthClass={wide ? "max-w-3xl" : "max-w-xl"}
+      onClose={onClose}
+      footer={footer}
+    >
+      {children}
+    </PopupWindow>
   );
 }
 
@@ -101,7 +98,9 @@ export function ContactsSection({
   onDelete: (id: string) => Promise<void>;
 }) {
   const router = useRouter();
+  const { confirm } = useDialog();
   const [modal, setModal] = useState<"add" | Contact | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [emailTo, setEmailTo] = useState<string | null>(null);
   const { sorted, sortKey, sortDir, toggle } = useSortableRows(contacts, "name", "asc");
 
@@ -119,7 +118,10 @@ export function ContactsSection({
           type="button"
           title="Add New Contact"
           className={btnGold}
-          onClick={() => setModal("add")}
+          onClick={() => {
+            setFieldErrors({});
+            setModal("add");
+          }}
         >
           Add New Contact
         </button>
@@ -166,7 +168,7 @@ export function ContactsSection({
                           label: "Delete",
                           danger: true,
                           onClick: async () => {
-                            const ok = window.confirm(
+                            const ok = await confirm(
                               "The selected contact will be permanently deleted. Do you wish to proceed?"
                             );
                             if (!ok) return;
@@ -196,10 +198,10 @@ export function ContactsSection({
           onClose={() => setModal(null)}
           footer={
             <>
-              <button type="button" className={btnOutline} onClick={() => setModal(null)}>
+              <button type="button" className={POPUP_BTN_CANCEL} onClick={() => setModal(null)}>
                 Cancel
               </button>
-              <button type="submit" form="contact-modal-form" className={btnGold}>
+              <button type="submit" form="contact-modal-form" className={POPUP_BTN_PRIMARY}>
                 Save
               </button>
             </>
@@ -208,6 +210,10 @@ export function ContactsSection({
           <form
             id="contact-modal-form"
             className="space-y-3"
+            noValidate
+            onSubmit={(e) =>
+              blockIfMissing(e, [["name", "Name"]], setFieldErrors)
+            }
             action={async (fd) => {
               await save(fd);
             }}
@@ -231,14 +237,14 @@ export function ContactsSection({
               ] as const
             ).map(([name, label, value, required]) => (
               <label key={name} className="block text-sm">
-                <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
-                  {label}
-                </span>
+                <FieldLabel required={required}>{label}</FieldLabel>
                 <input
                   name={name}
-                  required={required}
                   defaultValue={value}
-                  className={`${input} ${name === "email" ? "normal-case" : "uppercase"}`}
+                  className={inputClass(
+                    fieldErrors[name],
+                    name === "email" ? "normal-case" : "uppercase"
+                  )}
                   onBlur={(e) => {
                     if (name === "phone" || name === "mobile") {
                       e.target.value = formatPhoneUs(e.target.value);
@@ -247,6 +253,7 @@ export function ContactsSection({
                     }
                   }}
                 />
+                <FieldError error={fieldErrors[name]} />
               </label>
             ))}
             <label className="flex items-center gap-2 text-sm text-[var(--color-blue)]">
@@ -359,6 +366,7 @@ export function EmailsSection({
   onDelete: (id: string) => Promise<void>;
 }) {
   const router = useRouter();
+  const { confirm, alert } = useDialog();
   const [composeOpen, setComposeOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [view, setView] = useState<LeadEmail | null>(null);
@@ -441,7 +449,7 @@ export function EmailsSection({
                           label: "Delete",
                           danger: true,
                           onClick: async () => {
-                            const ok = window.confirm(
+                            const ok = await confirm(
                               "The selected file will be permanently deleted. Do you wish to proceed?"
                             );
                             if (!ok) return;
@@ -487,7 +495,7 @@ export function EmailsSection({
             <>
               <button
                 type="button"
-                className={btnOutline}
+                className={POPUP_BTN_CANCEL}
                 onClick={() => {
                   setUploadOpen(false);
                   setFile(null);
@@ -498,10 +506,10 @@ export function EmailsSection({
               </button>
               <button
                 type="button"
-                className={btnGold}
+                className={POPUP_BTN_PRIMARY}
                 onClick={async () => {
                   if (!file) {
-                    window.alert("A file must be uploaded");
+                    await alert("A file must be uploaded");
                     return;
                   }
                   const fd = new FormData();
@@ -557,7 +565,7 @@ export function EmailsSection({
           title="View Email"
           onClose={() => setView(null)}
           footer={
-            <button type="button" className={btnOutline} onClick={() => setView(null)}>
+            <button type="button" className={POPUP_BTN_CANCEL} onClick={() => setView(null)}>
               Close
             </button>
           }
@@ -609,6 +617,7 @@ export function ActivitiesSection({
   onDelete: (id: string) => Promise<void>;
 }) {
   const router = useRouter();
+  const { confirm } = useDialog();
   const [menuOpen, setMenuOpen] = useState(false);
   const [edit, setEdit] = useState<Activity | { type: string } | null>(null);
   const { sorted, sortKey, sortDir, toggle } = useSortableRows(
@@ -703,7 +712,7 @@ export function ActivitiesSection({
                           label: "Delete",
                           danger: true,
                           onClick: async () => {
-                            const ok = window.confirm(
+                            const ok = await confirm(
                               "The selected activity will be permanently deleted. Do you wish to proceed?"
                             );
                             if (!ok) return;
@@ -733,10 +742,10 @@ export function ActivitiesSection({
           onClose={() => setEdit(null)}
           footer={
             <>
-              <button type="button" className={btnOutline} onClick={() => setEdit(null)}>
+              <button type="button" className={POPUP_BTN_CANCEL} onClick={() => setEdit(null)}>
                 Cancel
               </button>
-              <button type="submit" form="activity-form" className={btnGold}>
+              <button type="submit" form="activity-form" className={POPUP_BTN_PRIMARY}>
                 Save
               </button>
             </>
@@ -745,6 +754,7 @@ export function ActivitiesSection({
           <form
             id="activity-form"
             className="grid gap-3 sm:grid-cols-2"
+            noValidate
             action={async (fd) => {
               if ("id" in edit) await onUpdate(edit.id, fd);
               else await onCreate(fd);
@@ -799,6 +809,7 @@ export function CampaignsSection({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<Campaign | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const { sorted, sortKey, sortDir, toggle } = useSortableRows(
     campaigns,
     "campaignName",
@@ -812,7 +823,10 @@ export function CampaignsSection({
           type="button"
           title="Add Campaign"
           className={btnGold}
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            setFieldErrors({});
+            setOpen(true);
+          }}
         >
           Add Campaign
         </button>
@@ -879,10 +893,10 @@ export function CampaignsSection({
           onClose={() => setOpen(false)}
           footer={
             <>
-              <button type="button" className={btnOutline} onClick={() => setOpen(false)}>
+              <button type="button" className={POPUP_BTN_CANCEL} onClick={() => setOpen(false)}>
                 Cancel
               </button>
-              <button type="submit" form="campaign-form" className={btnGold}>
+              <button type="submit" form="campaign-form" className={POPUP_BTN_PRIMARY}>
                 Save
               </button>
             </>
@@ -891,6 +905,10 @@ export function CampaignsSection({
           <form
             id="campaign-form"
             className="space-y-3"
+            noValidate
+            onSubmit={(e) =>
+              blockIfMissing(e, [["campaignName", "Campaign Name"]], setFieldErrors)
+            }
             action={async (fd) => {
               await onAdd(fd);
               setOpen(false);
@@ -898,15 +916,15 @@ export function CampaignsSection({
             }}
           >
             <label className="block text-sm">
-              <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
-                Campaign Name
-              </span>
-              <input name="campaignName" required className={`${input} uppercase`} />
+              <FieldLabel required>Campaign Name</FieldLabel>
+              <input
+                name="campaignName"
+                className={inputClass(fieldErrors.campaignName, "uppercase")}
+              />
+              <FieldError error={fieldErrors.campaignName} />
             </label>
             <label className="block text-sm">
-              <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
-                Template Name
-              </span>
+              <FieldLabel>Template Name</FieldLabel>
               <input name="templateName" className={`${input} uppercase`} />
             </label>
           </form>
@@ -918,7 +936,7 @@ export function CampaignsSection({
           title="View Campaign"
           onClose={() => setView(null)}
           footer={
-            <button type="button" className={btnOutline} onClick={() => setView(null)}>
+            <button type="button" className={POPUP_BTN_CANCEL} onClick={() => setView(null)}>
               Close
             </button>
           }
@@ -949,7 +967,9 @@ export function ClaimsSection({
   onRemove: (id: string) => Promise<void>;
 }) {
   const router = useRouter();
+  const { confirm } = useDialog();
   const [modal, setModal] = useState<"add" | Claim | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const { sorted, sortKey, sortDir, toggle } = useSortableRows(
     claims,
     "modifiedAt",
@@ -970,7 +990,10 @@ export function ClaimsSection({
           type="button"
           title="Add Claim"
           className={btnGold}
-          onClick={() => setModal("add")}
+          onClick={() => {
+            setFieldErrors({});
+            setModal("add");
+          }}
         >
           Add Claim
         </button>
@@ -1050,7 +1073,7 @@ export function ClaimsSection({
                           label: "Delete",
                           danger: true,
                           onClick: async () => {
-                            const ok = window.confirm(
+                            const ok = await confirm(
                               "The selected Claim will be permanently deleted. Do you wish to continue?"
                             );
                             if (!ok) return;
@@ -1095,12 +1118,12 @@ export function ClaimsSection({
             <>
               <button
                 type="button"
-                className={btnOutline}
+                className={POPUP_BTN_CANCEL}
                 onClick={() => setModal(null)}
               >
                 Cancel
               </button>
-              <button type="submit" form="claim-form" className={btnGold}>
+              <button type="submit" form="claim-form" className={POPUP_BTN_PRIMARY}>
                 Save
               </button>
             </>
@@ -1109,18 +1132,26 @@ export function ClaimsSection({
           <form
             id="claim-form"
             className="space-y-3"
+            noValidate
+            onSubmit={(e) =>
+              blockIfMissing(
+                e,
+                [
+                  ["type", "Type"],
+                  ["topic", "Topic"],
+                ],
+                setFieldErrors
+              )
+            }
             action={async (fd) => {
               await save(fd);
             }}
           >
             <label className="block text-sm">
-              <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
-                Type
-              </span>
+              <FieldLabel required>Type</FieldLabel>
               <select
                 name="type"
-                required
-                className={input}
+                className={inputClass(fieldErrors.type)}
                 defaultValue={modal === "add" ? "" : modal.type}
               >
                 <option value=""></option>
@@ -1130,15 +1161,13 @@ export function ClaimsSection({
                   </option>
                 ))}
               </select>
+              <FieldError error={fieldErrors.type} />
             </label>
             <label className="block text-sm">
-              <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
-                Topic
-              </span>
+              <FieldLabel required>Topic</FieldLabel>
               <select
                 name="topic"
-                required
-                className={input}
+                className={inputClass(fieldErrors.topic)}
                 defaultValue={modal === "add" ? "" : modal.topic}
               >
                 <option value=""></option>
@@ -1148,11 +1177,10 @@ export function ClaimsSection({
                   </option>
                 ))}
               </select>
+              <FieldError error={fieldErrors.topic} />
             </label>
             <label className="block text-sm">
-              <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
-                Load No
-              </span>
+              <FieldLabel>Load No</FieldLabel>
               <input
                 name="loadNo"
                 defaultValue={modal === "add" ? "" : modal.loadNo}
@@ -1186,9 +1214,11 @@ export function ContactLogSection({
   onDelete: (id: string) => Promise<void>;
 }) {
   const router = useRouter();
+  const { confirm } = useDialog();
   const [edit, setEdit] = useState<ContactLog | "new" | null>(null);
   const [contactName, setContactName] = useState("");
   const [lookupOpen, setLookupOpen] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const { sorted, sortKey, sortDir, toggle } = useSortableRows(logs, "logDate", "desc");
 
   function openNew() {
@@ -1205,6 +1235,7 @@ export function ContactLogSection({
     setEdit(null);
     setLookupOpen(false);
     setContactName("");
+    setFieldErrors({});
   }
 
   return (
@@ -1264,7 +1295,7 @@ export function ContactLogSection({
                           label: "Delete",
                           danger: true,
                           onClick: async () => {
-                            const ok = window.confirm(
+                            const ok = await confirm(
                               "The selected log entry will be permanently deleted. Do you wish to proceed?"
                             );
                             if (!ok) return;
@@ -1294,10 +1325,10 @@ export function ContactLogSection({
           onClose={closeModal}
           footer={
             <>
-              <button type="button" className={btnOutline} onClick={closeModal}>
+              <button type="button" className={POPUP_BTN_CANCEL} onClick={closeModal}>
                 Cancel
               </button>
-              <button type="submit" form="clog-form" className={btnGold}>
+              <button type="submit" form="clog-form" className={POPUP_BTN_PRIMARY}>
                 Save
               </button>
             </>
@@ -1306,6 +1337,18 @@ export function ContactLogSection({
           <form
             id="clog-form"
             className="grid gap-3 sm:grid-cols-2"
+            noValidate
+            onSubmit={(e) => {
+              const fd = new FormData(e.currentTarget);
+              fd.set("contactName", contactName);
+              const next = missingRequired(fd, [
+                ["contactName", "Contact"],
+                ["subject", "Subject"],
+                ["logDate", "Date"],
+              ]);
+              setFieldErrors(next);
+              if (Object.keys(next).length) e.preventDefault();
+            }}
             action={async (fd) => {
               fd.set("contactName", contactName);
               if (edit === "new") await onCreate(fd);
@@ -1314,17 +1357,15 @@ export function ContactLogSection({
               router.refresh();
             }}
           >
+            <input type="hidden" name="contactName" value={contactName} />
             <div className="sm:col-span-2">
-              <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
-                Contact
-              </span>
+              <FieldLabel required>Contact</FieldLabel>
               <div className="flex gap-2">
                 <input
                   name="contactNameDisplay"
                   value={contactName}
                   onChange={(e) => setContactName(toAllCaps(e.target.value))}
-                  className={`${input} uppercase`}
-                  required
+                  className={inputClass(fieldErrors.contactName, "uppercase")}
                 />
                 <button
                   type="button"
@@ -1334,17 +1375,15 @@ export function ContactLogSection({
                   Lookup
                 </button>
               </div>
+              <FieldError error={fieldErrors.contactName} />
             </div>
 
             <label className="block text-sm">
-              <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
-                Type
-              </span>
+              <FieldLabel>Type</FieldLabel>
               <select
                 name="logType"
                 defaultValue={edit === "new" ? "Call" : edit.logType}
                 className={input}
-                required
               >
                 {["Call", "Email", "Meeting", "In Person", "Other"].map((t) => (
                   <option key={t} value={t}>
@@ -1366,29 +1405,25 @@ export function ContactLogSection({
             </label>
 
             <label className="block text-sm sm:col-span-2">
-              <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
-                Subject
-              </span>
+              <FieldLabel required>Subject</FieldLabel>
               <input
                 name="subject"
-                required
                 maxLength={100}
                 defaultValue={edit === "new" ? "" : edit.subject}
-                className={`${input} uppercase`}
+                className={inputClass(fieldErrors.subject, "uppercase")}
               />
+              <FieldError error={fieldErrors.subject} />
             </label>
 
             <label className="block text-sm">
-              <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
-                Date
-              </span>
+              <FieldLabel required>Date</FieldLabel>
               <input
                 name="logDate"
-                required
                 defaultValue={edit === "new" ? "" : edit.logDate}
                 placeholder="mm/dd/yyyy"
-                className={`${input} normal-case`}
+                className={inputClass(fieldErrors.logDate, "normal-case")}
               />
+              <FieldError error={fieldErrors.logDate} />
             </label>
 
             <label className="block text-sm">
@@ -1467,7 +1502,9 @@ export function NotesSection({
   onDraftChange?: (draft: string) => void;
 }) {
   const router = useRouter();
+  const { confirm } = useDialog();
   const [draft, setDraft] = useState("");
+  const [noteError, setNoteError] = useState<string | null>(null);
   const remaining = NOTE_CHAR_LIMIT - draft.length;
   const over = remaining <= 0;
 
@@ -1481,23 +1518,32 @@ export function NotesSection({
     <div className="space-y-4">
       <div>
         <div
-          className={`mb-1 text-xs font-semibold ${
+          className={`mb-1 flex items-center gap-1 text-xs font-semibold ${
             over ? "text-[var(--color-danger)]" : "text-[var(--color-blue)]/70"
           }`}
         >
+          <span className="inline-block h-3.5 w-1 rounded bg-[var(--color-danger)]" />
           Character Limit ({Math.max(0, remaining)} of {NOTE_CHAR_LIMIT})
         </div>
         <textarea
           value={draft}
           maxLength={NOTE_CHAR_LIMIT}
-          onChange={(e) => updateDraft(e.target.value)}
-          className={`${input} min-h-[72px] normal-case`}
+          onChange={(e) => {
+            setNoteError(null);
+            updateDraft(e.target.value);
+          }}
+          className={`${inputClass(noteError ?? undefined)} min-h-[72px] normal-case`}
         />
+        <FieldError error={noteError ?? undefined} />
         <button
           type="button"
           className={`${btnGold} mt-2`}
           onClick={async () => {
-            if (!draft.trim()) return;
+            if (!draft.trim()) {
+              setNoteError("Note is required");
+              return;
+            }
+            setNoteError(null);
             await onAdd(draft.trim());
             updateDraft("");
             router.refresh();
@@ -1523,7 +1569,7 @@ export function NotesSection({
                   type="button"
                   className="text-xs text-[var(--color-danger)]"
                   onClick={async () => {
-                    const ok = window.confirm(
+                    const ok = await confirm(
                       "The selected note will be deleted permanently. Do you wish to proceed?"
                     );
                     if (!ok) return;

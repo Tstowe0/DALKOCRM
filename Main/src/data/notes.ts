@@ -31,6 +31,13 @@ function map(row: Row): Note {
   };
 }
 
+export function getNote(id: string): Note | null {
+  const row = getDb().prepare(`SELECT * FROM notes WHERE id = ?`).get(id) as
+    | Row
+    | undefined;
+  return row ? map(row) : null;
+}
+
 export function listNotes(companyId: string): Note[] {
   const rows = getDb()
     .prepare(
@@ -40,7 +47,11 @@ export function listNotes(companyId: string): Note[] {
   return rows.map(map);
 }
 
-export function createNote(companyId: string, body: string): Note {
+export function createNote(
+  companyId: string,
+  body: string,
+  createdBy = DEMO_USER.fullName
+): Note {
   const trimmed = body.trim().slice(0, NOTE_CHAR_LIMIT);
   if (!trimmed) throw new Error("Note is required");
   const now = new Date().toISOString();
@@ -50,7 +61,7 @@ export function createNote(companyId: string, body: string): Note {
       `INSERT INTO notes (id, company_id, body, created_by, created_at)
        VALUES (?, ?, ?, ?, ?)`
     )
-    .run(id, companyId, trimmed, DEMO_USER.fullName, now);
+    .run(id, companyId, trimmed, createdBy, now);
   return listNotes(companyId).find((n) => n.id === id)!;
 }
 

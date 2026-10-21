@@ -8,38 +8,72 @@ import {
   createCompany,
   deleteCompany,
   emptyCompanyInput,
+  getCompany,
   setCompanyLogo,
   setCompanyStatus,
   updateCompanyField,
   type CompanyInput,
 } from "@/data/companies";
-import { createContact, deleteContact, updateContact } from "@/data/contacts";
+import {
+  createContact,
+  deleteContact,
+  getContact,
+  listAllContactRows,
+  updateContact,
+} from "@/data/contacts";
 import {
   createAttachment,
   deleteAttachment,
+  getAttachment,
   renameAttachment,
 } from "@/data/attachments";
 import {
   createComposedEmail,
   createUploadedEmail,
   deleteEmail,
+  getEmail,
 } from "@/data/emails";
 import {
   createActivity,
   deleteActivity,
+  getActivity,
   updateActivity,
 } from "@/data/activities";
-import { createCampaign, deleteCampaign } from "@/data/campaigns";
+import { createCampaign, deleteCampaign, getCampaign } from "@/data/campaigns";
 import {
   createContactLog,
   deleteContactLog,
+  getContactLog,
   updateContactLog,
 } from "@/data/contactLogs";
-import { createNote, deleteNote } from "@/data/notes";
-import { addChangeLog } from "@/data/changeLogs";
-import { DEMO_USER, UPLOADS_DIR } from "@/lib/paths";
+import { createNote, deleteNote, getNote } from "@/data/notes";
+import { getDb } from "@/lib/db";
+import { UPLOADS_DIR } from "@/lib/paths";
+import { getActor, logChange } from "@/lib/actor";
 import { parseCurrency, ATTACHMENT_FILE_NAME_MAX } from "@/domain/formatting";
-import { isLeadStatus } from "@/domain/status";
+import { isLeadStatus, requireTmsStatus } from "@/domain/status";
+
+function assertCompany(companyId: string) {
+  if (!getCompany(companyId)) throw new Error("Company not found");
+}
+
+function assertOwned(
+  companyId: string,
+  record: { companyId: string } | null,
+  label: string
+) {
+  if (!record || record.companyId !== companyId) {
+    throw new Error(`${label} not found`);
+  }
+}
+
+function safeStoredFileName(original: string): string {
+  const base = path
+    .basename(original)
+    .replace(/[^\w.\-]+/g, "_")
+    .slice(0, 80);
+  return `${Date.now()}-${base || "file"}`;
+}
 
 function revalidateCompany(companyId?: string) {
   revalidatePath("/leads");
@@ -102,6 +136,9 @@ export async function saveNewLeadAction(formData: FormData) {
     input.physicalState = input.mailingState;
     input.physicalPostal = input.mailingPostal;
   }
+  if (!input.salesperson.trim()) {
+    input.salesperson = (await getActor()).fullName;
+  }
   const company = createCompany(input);
   revalidateCompany();
   redirect(`/leads/${company.id}`);
@@ -126,11 +163,13 @@ export async function saveLeadFieldAction(
   if (field === "industry" && typeof value === "string") {
     next = value ? value.split("|").filter(Boolean) : [];
   }
-  updateCompanyField(id, field, next);
+  const actor = await getActor();
+  updateCompanyField(id, field, next, actor.fullName);
   revalidateCompany(id);
 }
 
 export async function uploadLogoAction(companyId: string, formData: FormData) {
+  assertCompany(companyId);
   const file = formData.get("logo");
   if (!(file instanceof File) || file.size === 0) {
     throw new Error("Select an image to upload");
@@ -149,14 +188,36 @@ export async function deleteLeadAction(id: string) {
   revalidateCompany();
 }
 
+/** List More menu — Library Leads spec returns the user to the Leads screen. */
 export async function convertLeadToProspectAction(id: string) {
-  setCompanyStatus(id, "Present");
+  const actor = await getActor();
+  setCompanyStatus(id, "Present", undefined, actor.fullName);
+  revalidateCompany(id);
+}
+
+export async function convertLeadToClientAction(
+  id: string,
+  tmsStatus: string
+) {
+  const actor = await getActor();
+  setCompanyStatus(id, "Client", requireTmsStatus(tmsStatus), actor.fullName);
+  revalidateCompany(id);
+}
+
+/** Detail header — open the company on its new pipeline route. */
+export async function convertLeadToProspectAndOpenAction(id: string) {
+  const actor = await getActor();
+  setCompanyStatus(id, "Present", undefined, actor.fullName);
   revalidateCompany(id);
   redirect(`/prospects/${id}`);
 }
 
-export async function convertLeadToClientAction(id: string) {
-  setCompanyStatus(id, "Client");
+export async function convertLeadToClientAndOpenAction(
+  id: string,
+  tmsStatus: string
+) {
+  const actor = await getActor();
+  setCompanyStatus(id, "Client", requireTmsStatus(tmsStatus), actor.fullName);
   revalidateCompany(id);
   redirect(`/clients/${id}`);
 }
@@ -175,25 +236,27 @@ export async function massDeleteLeadsAction(ids: string[]) {
 }
 
 export async function massConvertLeadsAction(ids: string[]) {
+  const actor = await getActor();
   for (const id of ids) {
-    setCompanyStatus(id, "Client");
+    setCompanyStatus(id, "Client", undefined, actor.fullName);
   }
   revalidateCompany();
 }
 
 export async function addContactAction(companyId: string, formData: FormData) {
+  assertCompany(companyId);
   const name = String(formData.get("name") ?? "").trim();
-  if (!name) return;
+  if (!name) throw new Error("Name is required");
   createContact(companyId, {
     name,
     title: String(formData.get("title") ?? ""),
     email: String(formData.get("email") ?? ""),
     phone: String(formData.get("phone") ?? ""),
     mobile: String(formData.get("mobile") ?? ""),
-    contactOwner: String(formData.get("contactOwner") ?? DEMO_USER.fullName),
+    contactOwner: String(formData.get("contactOwner") ?? (await getActor()).fullName),
     isPrimary: formData.get("isPrimary") === "on",
   });
-  addChangeLog(companyId, `Contact added: ${name.toUpperCase()}`);
+  await logChange(companyId, `Contact added: ${name.toUpperCase()}`);
   revalidateCompany(companyId);
 }
 
@@ -202,6 +265,7 @@ export async function updateContactAction(
   contactId: string,
   formData: FormData
 ) {
+  assertOwned(companyId, getContact(contactId), "Contact");
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("Name is required");
   updateContact(contactId, {
@@ -210,16 +274,17 @@ export async function updateContactAction(
     email: String(formData.get("email") ?? ""),
     phone: String(formData.get("phone") ?? ""),
     mobile: String(formData.get("mobile") ?? ""),
-    contactOwner: String(formData.get("contactOwner") ?? DEMO_USER.fullName),
+    contactOwner: String(formData.get("contactOwner") ?? (await getActor()).fullName),
     isPrimary: formData.get("isPrimary") === "on",
   });
-  addChangeLog(companyId, `Contact updated: ${name.toUpperCase()}`);
+  await logChange(companyId, `Contact updated: ${name.toUpperCase()}`);
   revalidateCompany(companyId);
 }
 
 export async function removeContactAction(companyId: string, contactId: string) {
+  assertOwned(companyId, getContact(contactId), "Contact");
   deleteContact(contactId);
-  addChangeLog(companyId, "Contact deleted");
+  await logChange(companyId, "Contact deleted");
   revalidateCompany(companyId);
 }
 
@@ -227,6 +292,7 @@ export async function uploadAttachmentAction(
   companyId: string,
   formData: FormData
 ) {
+  assertCompany(companyId);
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
     throw new Error("A file must be uploaded");
@@ -244,7 +310,7 @@ export async function uploadAttachmentAction(
     companyId,
     fileName,
     mimeType: file.type || "application/octet-stream",
-    uploadedBy: DEMO_USER.fullName,
+    uploadedBy: (await getActor()).fullName,
     bytes,
   });
   revalidateCompany(companyId);
@@ -256,6 +322,7 @@ export async function renameAttachmentAction(
   formData: FormData
 ) {
   const fileName = String(formData.get("fileName") ?? "").trim();
+  assertOwned(companyId, getAttachment(attachmentId), "Attachment");
   if (fileName.length > ATTACHMENT_FILE_NAME_MAX) {
     throw new Error(
       `Character limit of ${ATTACHMENT_FILE_NAME_MAX} exceeded`
@@ -269,6 +336,7 @@ export async function deleteAttachmentAction(
   companyId: string,
   attachmentId: string
 ) {
+  assertOwned(companyId, getAttachment(attachmentId), "Attachment");
   deleteAttachment(attachmentId);
   revalidateCompany(companyId);
 }
@@ -340,7 +408,7 @@ export async function importLeadsCsvAction(formData: FormData) {
       website: get("website"),
       linkedin: get("linked inn") || get("linkedin"),
       salesTerritory: get("sales territory"),
-      salesperson: get("salesperson") || DEMO_USER.fullName,
+      salesperson: get("salesperson") || (await getActor()).fullName,
       office: get("office"),
       lastContact: get("last contacted") || get("last contact"),
       mailingCountry: get("mailing address: country") || get("mailing country"),
@@ -370,16 +438,19 @@ export async function composeEmailAction(
     bcc: string;
     subject: string;
     body: string;
+    from?: string;
   }
 ) {
+  assertCompany(companyId);
   createComposedEmail(companyId, {
     subject: payload.subject,
     toAddress: payload.to,
+    fromAddress: payload.from,
     ccAddress: payload.cc,
     bccAddress: payload.bcc,
     body: payload.body,
   });
-  addChangeLog(companyId, `Email composed: ${payload.subject}`);
+  await logChange(companyId, `Email composed: ${payload.subject}`);
   revalidateLead(companyId);
 }
 
@@ -388,22 +459,24 @@ export async function uploadEmailAction(companyId: string, formData: FormData) {
   if (!(file instanceof File) || file.size === 0) {
     throw new Error("A file must be uploaded");
   }
+  assertCompany(companyId);
   const dir = path.join(UPLOADS_DIR, companyId, "emails");
   fs.mkdirSync(dir, { recursive: true });
-  const stored = `${Date.now()}-${file.name}`;
+  const stored = safeStoredFileName(file.name);
   fs.writeFileSync(path.join(dir, stored), Buffer.from(await file.arrayBuffer()));
   createUploadedEmail(companyId, {
     fileName: file.name,
     storedName: `${companyId}/emails/${stored}`,
     subject: file.name,
   });
-  addChangeLog(companyId, `Email uploaded: ${file.name}`);
+  await logChange(companyId, `Email uploaded: ${file.name}`);
   revalidateLead(companyId);
 }
 
 export async function deleteEmailAction(companyId: string, emailId: string) {
+  assertOwned(companyId, getEmail(emailId), "Email");
   deleteEmail(emailId);
-  addChangeLog(companyId, "Email deleted");
+  await logChange(companyId, "Email deleted");
   revalidateLead(companyId);
 }
 
@@ -411,15 +484,16 @@ export async function createActivityAction(
   companyId: string,
   formData: FormData
 ) {
+  assertCompany(companyId);
   createActivity(companyId, {
     type: String(formData.get("type") ?? "Task"),
     dueDate: String(formData.get("dueDate") ?? ""),
     priority: String(formData.get("priority") ?? ""),
     purpose: String(formData.get("purpose") ?? ""),
     status: String(formData.get("status") ?? "OPEN"),
-    activityOwner: String(formData.get("activityOwner") ?? DEMO_USER.fullName),
+    activityOwner: String(formData.get("activityOwner") ?? (await getActor()).fullName),
   });
-  addChangeLog(companyId, `Activity added: ${String(formData.get("type"))}`);
+  await logChange(companyId, `Activity added: ${String(formData.get("type"))}`);
   revalidateLead(companyId);
 }
 
@@ -428,6 +502,7 @@ export async function updateActivityAction(
   activityId: string,
   formData: FormData
 ) {
+  assertOwned(companyId, getActivity(activityId), "Activity");
   updateActivity(activityId, {
     type: String(formData.get("type") ?? ""),
     dueDate: String(formData.get("dueDate") ?? ""),
@@ -436,7 +511,7 @@ export async function updateActivityAction(
     status: String(formData.get("status") ?? ""),
     activityOwner: String(formData.get("activityOwner") ?? ""),
   });
-  addChangeLog(companyId, "Activity updated");
+  await logChange(companyId, "Activity updated");
   revalidateLead(companyId);
 }
 
@@ -444,19 +519,21 @@ export async function deleteActivityAction(
   companyId: string,
   activityId: string
 ) {
+  assertOwned(companyId, getActivity(activityId), "Activity");
   deleteActivity(activityId);
-  addChangeLog(companyId, "Activity deleted");
+  await logChange(companyId, "Activity deleted");
   revalidateLead(companyId);
 }
 
 export async function addCampaignAction(companyId: string, formData: FormData) {
+  assertCompany(companyId);
   const campaignName = String(formData.get("campaignName") ?? "").trim();
   if (!campaignName) throw new Error("Campaign Name is required");
   createCampaign(companyId, {
     campaignName,
     templateName: String(formData.get("templateName") ?? ""),
   });
-  addChangeLog(companyId, `Campaign added: ${campaignName.toUpperCase()}`);
+  await logChange(companyId, `Campaign added: ${campaignName.toUpperCase()}`);
   revalidateLead(companyId);
 }
 
@@ -464,8 +541,9 @@ export async function removeCampaignAction(
   companyId: string,
   campaignId: string
 ) {
+  assertOwned(companyId, getCampaign(campaignId), "Campaign");
   deleteCampaign(campaignId);
-  addChangeLog(companyId, "Campaign removed");
+  await logChange(companyId, "Campaign removed");
   revalidateLead(companyId);
 }
 
@@ -473,6 +551,7 @@ export async function createContactLogAction(
   companyId: string,
   formData: FormData
 ) {
+  assertCompany(companyId);
   const subject = String(formData.get("subject") ?? "").trim();
   const contactName = String(formData.get("contactName") ?? "").trim();
   const logDate = String(formData.get("logDate") ?? "").trim();
@@ -490,7 +569,7 @@ export async function createContactLogAction(
     startTime: String(formData.get("startTime") ?? ""),
     endTime: String(formData.get("endTime") ?? ""),
   });
-  addChangeLog(companyId, `Contact log added: ${subject.toUpperCase()}`);
+  await logChange(companyId, `Contact log added: ${subject.toUpperCase()}`);
   revalidateLead(companyId);
 }
 
@@ -499,35 +578,57 @@ export async function updateContactLogAction(
   logId: string,
   formData: FormData
 ) {
+  assertOwned(companyId, getContactLog(logId), "Contact log");
+  const subject = String(formData.get("subject") ?? "").trim();
+  const contactName = String(formData.get("contactName") ?? "").trim();
+  const logDate = String(formData.get("logDate") ?? "").trim();
+  if (!contactName || !subject || !logDate) {
+    throw new Error("Contact, Subject, and Date are required");
+  }
   updateContactLog(logId, {
-    contactName: String(formData.get("contactName") ?? ""),
+    contactName,
     logType: String(formData.get("logType") ?? ""),
     purpose: String(formData.get("purpose") ?? ""),
-    subject: String(formData.get("subject") ?? ""),
-    logDate: String(formData.get("logDate") ?? ""),
+    subject,
+    logDate,
     status: String(formData.get("status") ?? ""),
     details: String(formData.get("details") ?? ""),
     startTime: String(formData.get("startTime") ?? ""),
     endTime: String(formData.get("endTime") ?? ""),
   });
-  addChangeLog(companyId, "Contact log updated");
+  await logChange(companyId, "Contact log updated");
   revalidateLead(companyId);
 }
 
 export async function deleteContactLogAction(companyId: string, logId: string) {
+  assertOwned(companyId, getContactLog(logId), "Contact log");
   deleteContactLog(logId);
-  addChangeLog(companyId, "Contact log deleted");
+  await logChange(companyId, "Contact log deleted");
   revalidateLead(companyId);
 }
 
 export async function addNoteAction(companyId: string, body: string) {
-  createNote(companyId, body);
-  addChangeLog(companyId, "Note added");
+  assertCompany(companyId);
+  createNote(companyId, body, (await getActor()).fullName);
+  await logChange(companyId, "Note added");
   revalidateLead(companyId);
 }
 
 export async function deleteNoteAction(companyId: string, noteId: string) {
+  assertOwned(companyId, getNote(noteId), "Note");
   deleteNote(noteId);
-  addChangeLog(companyId, "Note deleted");
+  await logChange(companyId, "Note deleted");
   revalidateLead(companyId);
+}
+
+export async function listEmailLookupAction() {
+  const contacts = listAllContactRows();
+  const companies = (
+    getDb()
+      .prepare(
+        `SELECT id, company_name FROM companies ORDER BY company_name COLLATE NOCASE`
+      )
+      .all() as Array<{ id: string; company_name: string }>
+  ).map((r) => ({ id: r.id, companyName: r.company_name }));
+  return { contacts, companies };
 }

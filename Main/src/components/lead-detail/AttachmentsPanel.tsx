@@ -3,6 +3,9 @@
 import { useMemo, useState } from "react";
 import type { Attachment } from "@/data/attachments";
 import { ATTACHMENT_FILE_NAME_MAX } from "@/domain/formatting";
+import { MoreMenu } from "@/components/shell/MoreMenu";
+import { useDialog } from "@/components/shell/dialogs";
+import { FieldError, FieldLabel, inputClass } from "@/components/shell/formFields";
 
 type Props = {
   attachments: Attachment[];
@@ -31,6 +34,7 @@ export function AttachmentsPanel({
   onEmail,
   uploadOnly = false,
 }: Props) {
+  const { confirm } = useDialog();
   const [dragOver, setDragOver] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState("");
@@ -38,8 +42,8 @@ export function AttachmentsPanel({
     "idle"
   );
   const [message, setMessage] = useState<string | null>(null);
-  const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameError, setRenameError] = useState<string | null>(null);
 
   const overLimit = fileName.length > ATTACHMENT_FILE_NAME_MAX;
 
@@ -116,23 +120,22 @@ export function AttachmentsPanel({
             />
           </label>
           <label className="block min-w-[220px] flex-1 text-sm">
-            <span className="mb-1 flex items-center gap-1 font-medium">
-              <span className="inline-block h-4 w-1 rounded bg-[var(--color-danger)]" />
-              File Name
-            </span>
+            <FieldLabel required>File Name</FieldLabel>
             <input
               value={fileName}
               onChange={(e) => setFileName(e.target.value)}
-              className={`w-full rounded border px-2 py-1.5 ${
-                overLimit
-                  ? "border-[var(--color-danger)]"
-                  : "border-[var(--color-table-line)]/40"
-              }`}
+              className={inputClass(
+                overLimit || message === "File name is required"
+                  ? message || "invalid"
+                  : undefined
+              )}
             />
             {overLimit ? (
-              <span className="mt-1 block text-xs italic text-[var(--color-danger)]">
-                Character limit of {ATTACHMENT_FILE_NAME_MAX} exceeded
-              </span>
+              <FieldError
+                error={`Character limit of ${ATTACHMENT_FILE_NAME_MAX} exceeded`}
+              />
+            ) : message === "File name is required" ? (
+              <FieldError error={message} />
             ) : null}
           </label>
           <button
@@ -145,9 +148,9 @@ export function AttachmentsPanel({
           </button>
           <button
             type="button"
-            onClick={() => {
+            onClick={async () => {
               if (file || fileName) {
-                const choice = window.confirm(
+                const choice = await confirm(
                   "Changes have not been saved. Click OK to proceed without saving, or Cancel to stay."
                 );
                 if (!choice) return;
@@ -177,8 +180,18 @@ export function AttachmentsPanel({
             </div>
           </div>
         ) : null}
-        {message && progress === "idle" ? (
-          <p className="mt-2 text-xs italic text-[var(--color-blue)]">{message}</p>
+        {message &&
+        progress === "idle" &&
+        message !== "File name is required" ? (
+          <p
+            className={`mt-2 text-xs italic ${
+              message === "A file must be uploaded"
+                ? "text-[var(--color-danger)]"
+                : "text-[var(--color-blue)]"
+            }`}
+          >
+            {message}
+          </p>
         ) : null}
         {previewLabel ? (
           <div className="mt-3 rounded border border-[var(--color-table-line)]/20 bg-[#fafafa] p-2 text-xs">
@@ -213,18 +226,31 @@ export function AttachmentsPanel({
                   <td className="py-2 pr-2">
                     {renamingId === a.id ? (
                       <form
-                        className="flex items-center gap-2"
+                        className="flex flex-wrap items-center gap-2"
+                        noValidate
+                        onSubmit={(e) => {
+                          const fd = new FormData(e.currentTarget);
+                          if (!String(fd.get("fileName") ?? "").trim()) {
+                            e.preventDefault();
+                            setRenameError("File name is required");
+                          }
+                        }}
                         action={async (fd) => {
                           await onRename(a.id, fd);
                           setRenamingId(null);
+                          setRenameError(null);
                         }}
                       >
                         <input
                           name="fileName"
                           defaultValue={a.fileName.replace(/\.[^.]+$/, "")}
-                          className="rounded border px-2 py-1"
-                          required
+                          className={inputClass(
+                            renamingId === a.id
+                              ? renameError ?? undefined
+                              : undefined
+                          )}
                           maxLength={ATTACHMENT_FILE_NAME_MAX}
+                          onChange={() => setRenameError(null)}
                         />
                         <span className="text-xs text-[var(--color-table-line)]">
                           {a.fileName.includes(".")
@@ -240,72 +266,50 @@ export function AttachmentsPanel({
                         <button
                           type="button"
                           className="text-xs"
-                          onClick={() => setRenamingId(null)}
+                          onClick={() => {
+                            setRenamingId(null);
+                            setRenameError(null);
+                          }}
                         >
                           Cancel
                         </button>
+                        {renamingId === a.id ? (
+                          <FieldError error={renameError ?? undefined} />
+                        ) : null}
                       </form>
                     ) : (
                       a.fileName
                     )}
                   </td>
-                  <td className="relative py-2">
-                    <button
-                      type="button"
+                  <td className="py-2">
+                    <MoreMenu
                       title="More options"
-                      className="rounded px-2 hover:bg-black/5"
-                      onClick={() =>
-                        setOpenMenu((id) => (id === a.id ? null : a.id))
-                      }
-                    >
-                      ⋯
-                    </button>
-                    {openMenu === a.id ? (
-                      <div className="absolute left-0 z-20 mt-1 min-w-[120px] rounded border border-[var(--color-table-line)]/30 bg-white py-1 shadow-sm">
-                        <a
-                          href={`/api/attachments/${a.id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="block px-3 py-1.5 text-left hover:bg-black/5"
-                          onClick={() => setOpenMenu(null)}
-                        >
-                          View
-                        </a>
-                        <button
-                          type="button"
-                          className="block w-full px-3 py-1.5 text-left hover:bg-black/5"
-                          onClick={() => {
-                            onEmail?.(a);
-                            setOpenMenu(null);
-                          }}
-                        >
-                          Email
-                        </button>
-                        <button
-                          type="button"
-                          className="block w-full px-3 py-1.5 text-left hover:bg-black/5"
-                          onClick={() => {
-                            setRenamingId(a.id);
-                            setOpenMenu(null);
-                          }}
-                        >
-                          Rename
-                        </button>
-                        <button
-                          type="button"
-                          className="block w-full px-3 py-1.5 text-left text-[var(--color-danger)] hover:bg-black/5"
-                          onClick={async () => {
-                            const ok = window.confirm(
+                      items={[
+                        {
+                          label: "View",
+                          href: `/api/attachments/${a.id}`,
+                          external: true,
+                        },
+                        {
+                          label: "Email",
+                          onClick: () => onEmail?.(a),
+                        },
+                        {
+                          label: "Rename",
+                          onClick: () => setRenamingId(a.id),
+                        },
+                        {
+                          label: "Delete",
+                          danger: true,
+                          onClick: async () => {
+                            const ok = await confirm(
                               "The selected file will be permanently deleted. Do you wish to proceed?"
                             );
                             if (ok) await onDelete(a.id);
-                            setOpenMenu(null);
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    ) : null}
+                          },
+                        },
+                      ]}
+                    />
                   </td>
                   <td className="py-2 pr-2">{formatDate(a.uploadedAt)}</td>
                   <td className="py-2">{a.uploadedBy}</td>

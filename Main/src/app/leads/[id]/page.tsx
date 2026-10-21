@@ -24,8 +24,8 @@ import {
   saveNewLeadAction,
   uploadAttachmentAction,
   uploadLogoAction,
-  convertLeadToClientAction,
-  convertLeadToProspectAction,
+  convertLeadToClientAndOpenAction,
+  convertLeadToProspectAndOpenAction,
   deleteLeadAction,
   composeEmailAction,
   uploadEmailAction,
@@ -92,8 +92,8 @@ export default async function LeadDetailPage({ params }: { params: Params }) {
       renameAttachmentAction={renameAttachmentAction.bind(null, id)}
       deleteAttachmentAction={deleteAttachmentAction.bind(null, id)}
       uploadLogoAction={uploadLogoAction.bind(null, id)}
-      convertToProspectAction={convertLeadToProspectAction.bind(null, id)}
-      convertToClientAction={convertLeadToClientAction.bind(null, id)}
+      convertToProspectAction={convertLeadToProspectAndOpenAction.bind(null, id)}
+      convertToClientAction={convertLeadToClientAndOpenAction.bind(null, id)}
       deleteAction={deleteLeadAction.bind(null, id)}
       composeEmailAction={composeEmailAction.bind(null, id)}
       uploadEmailAction={uploadEmailAction.bind(null, id)}

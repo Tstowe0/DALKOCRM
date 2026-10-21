@@ -184,6 +184,22 @@ function migrate(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_claims_company ON claims(company_id);
     CREATE INDEX IF NOT EXISTS idx_contact_logs_company ON contact_logs(company_id);
     CREATE INDEX IF NOT EXISTS idx_notes_company ON notes(company_id);
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL DEFAULT '',
+      last4 TEXT NOT NULL DEFAULT '',
+      secret TEXT NOT NULL DEFAULT '',
+      created_by TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS admins (
+      email TEXT PRIMARY KEY,
+      locked INTEGER NOT NULL DEFAULT 0,
+      added_by TEXT NOT NULL DEFAULT '',
+      added_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_change_logs_company ON change_logs(company_id);
   `);
 

@@ -1,12 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useMemo, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ClaimListRow } from "@/data/claims";
 import { companyDetailHref } from "@/domain/status";
 import { formatLogDateTime, toAllCaps } from "@/domain/formatting";
 import { CLAIM_TOPICS, CLAIM_TYPES } from "@/domain/leadExtras";
+import { MoreMenu } from "@/components/shell/MoreMenu";
+import { useDialog } from "@/components/shell/dialogs";
+import {
+  POPUP_BTN_CANCEL,
+  POPUP_BTN_PRIMARY,
+  PopupWindow,
+} from "@/components/shell/PopupWindow";
+import {
+  FieldError,
+  FieldLabel,
+  blockIfMissing,
+  inputClass,
+} from "@/components/shell/formFields";
 
 type SearchRow = { id: string; field: string; value: string };
 type CompanyOption = { id: string; companyName: string };
@@ -36,6 +49,7 @@ export function ClaimsBoard({
   massDeleteAction,
 }: Props) {
   const router = useRouter();
+  const { confirm, alert } = useDialog();
   const [pending, startTransition] = useTransition();
   const [searches, setSearches] = useState<SearchRow[]>([
     { id: "s1", field: "Type", value: "" },
@@ -45,12 +59,16 @@ export function ClaimsBoard({
     companyId: initialCompanyId ?? "",
   });
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState("modifiedAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState<"add" | ClaimListRow | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setFieldErrors({});
+  }, [modal]);
 
   const filtered = useMemo(() => {
     return initialRows.filter((row) => {
@@ -107,7 +125,7 @@ export function ClaimsBoard({
   function runFind() {
     const missing = searches.some((s) => s.field && !s.value.trim());
     if (missing) {
-      window.alert("Please enter search criteria");
+      void alert("Please enter search criteria");
       return;
     }
     setApplied({
@@ -120,7 +138,7 @@ export function ClaimsBoard({
 
   function requireSelection(): string[] | null {
     if (selected.size === 0) {
-      window.alert("Please select Claim(s) to continue");
+      void alert("Please select Claim(s) to continue");
       return null;
     }
     return [...selected];
@@ -209,15 +227,17 @@ export function ClaimsBoard({
               if (!ids) return;
               if (action === "Export") exportSelected();
               if (action === "Mass Delete") {
-                const ok = window.confirm(
-                  "The selected Claims will be permanently deleted. Do you wish to continue?"
-                );
-                if (!ok) return;
-                startTransition(async () => {
-                  await massDeleteAction(ids);
-                  setSelected(new Set());
-                  router.refresh();
-                });
+                void (async () => {
+                  const ok = await confirm(
+                    "The selected Claims will be permanently deleted. Do you wish to continue?"
+                  );
+                  if (!ok) return;
+                  startTransition(async () => {
+                    await massDeleteAction(ids);
+                    setSelected(new Set());
+                    router.refresh();
+                  });
+                })();
               }
             }}
           >
@@ -354,7 +374,7 @@ export function ClaimsBoard({
                   label: "Delete",
                   run: () => {
                     void (async () => {
-                      const ok = window.confirm(
+                      const ok = await confirm(
                         "The selected Claim will be permanently deleted. Do you wish to continue?"
                       );
                       if (!ok) return;
@@ -384,34 +404,15 @@ export function ClaimsBoard({
                         }}
                       />
                     </td>
-                    <td className="relative px-2 py-2">
-                      <button
-                        type="button"
+                    <td className="px-2 py-2">
+                      <MoreMenu
                         title="More Options"
-                        className="rounded px-2 hover:bg-black/5"
-                        onClick={() =>
-                          setOpenMenu((id) => (id === row.id ? null : row.id))
-                        }
-                      >
-                        ⋯
-                      </button>
-                      {openMenu === row.id ? (
-                        <div className="absolute left-0 z-30 mt-1 min-w-[140px] rounded border bg-white py-1 shadow-sm">
-                          {moreItems.map((item) => (
-                            <button
-                              key={item.label}
-                              type="button"
-                              className="block w-full px-3 py-1.5 text-left hover:bg-black/5"
-                              onClick={() => {
-                                setOpenMenu(null);
-                                item.run();
-                              }}
-                            >
-                              {item.label}
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
+                        items={moreItems.map((item) => ({
+                          label: item.label,
+                          onClick: item.run,
+                          danger: item.label === "Delete",
+                        }))}
+                      />
                     </td>
                     <td className="px-3 py-2 font-semibold">{row.type}</td>
                     <td className="px-3 py-2">{row.topic}</td>
@@ -510,37 +511,57 @@ export function ClaimsBoard({
       </div>
 
       {modal ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded border border-[var(--color-blue)]/30 bg-white p-4 shadow-lg">
-            <div className="mb-3 flex items-center justify-between">
-              <h2
-                className="text-sm font-bold text-[var(--color-blue)]"
-                style={{ fontFamily: "var(--font-heading)" }}
+        <PopupWindow
+          title={modal === "add" ? "Add Claim" : "Edit Claim"}
+          maxWidthClass="max-w-md"
+          onClose={() => setModal(null)}
+          footer={
+            <>
+              <button
+                type="button"
+                className={POPUP_BTN_CANCEL}
+                onClick={() => setModal(null)}
               >
-                {modal === "add" ? "Add Claim" : "Edit Claim"}
-              </h2>
-              <button type="button" onClick={() => setModal(null)}>
-                ×
+                Cancel
               </button>
-            </div>
+              <button
+                type="submit"
+                form="claim-board-form"
+                className={POPUP_BTN_PRIMARY}
+              >
+                Save
+              </button>
+            </>
+          }
+        >
             <p className="mb-3 text-xs text-[var(--color-table-line)]">
               Add/Edit form fields are not in the Library — PoC uses Type, Topic,
               and Load No from the Client First Draft table.
             </p>
             <form
+              id="claim-board-form"
               className="space-y-3"
+              noValidate
+              onSubmit={(e) =>
+                blockIfMissing(
+                  e,
+                  [
+                    ["companyId", "Company"],
+                    ["type", "Type"],
+                    ["topic", "Topic"],
+                  ],
+                  setFieldErrors
+                )
+              }
               action={async (fd) => {
                 await saveModal(fd);
               }}
             >
               <label className="block text-sm">
-                <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
-                  Company
-                </span>
+                <FieldLabel required>Company</FieldLabel>
                 <select
                   name="companyId"
-                  required
-                  className="w-full rounded border border-[var(--color-blue)]/25 px-2 py-1.5 text-sm"
+                  className={inputClass(fieldErrors.companyId)}
                   defaultValue={
                     modal === "add"
                       ? initialCompanyId || ""
@@ -554,15 +575,13 @@ export function ClaimsBoard({
                     </option>
                   ))}
                 </select>
+                <FieldError error={fieldErrors.companyId} />
               </label>
               <label className="block text-sm">
-                <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
-                  Type
-                </span>
+                <FieldLabel required>Type</FieldLabel>
                 <select
                   name="type"
-                  required
-                  className="w-full rounded border border-[var(--color-blue)]/25 px-2 py-1.5 text-sm"
+                  className={inputClass(fieldErrors.type)}
                   defaultValue={modal === "add" ? "" : modal.type}
                 >
                   <option value=""></option>
@@ -572,15 +591,13 @@ export function ClaimsBoard({
                     </option>
                   ))}
                 </select>
+                <FieldError error={fieldErrors.type} />
               </label>
               <label className="block text-sm">
-                <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
-                  Topic
-                </span>
+                <FieldLabel required>Topic</FieldLabel>
                 <select
                   name="topic"
-                  required
-                  className="w-full rounded border border-[var(--color-blue)]/25 px-2 py-1.5 text-sm"
+                  className={inputClass(fieldErrors.topic)}
                   defaultValue={modal === "add" ? "" : modal.topic}
                 >
                   <option value=""></option>
@@ -590,38 +607,21 @@ export function ClaimsBoard({
                     </option>
                   ))}
                 </select>
+                <FieldError error={fieldErrors.topic} />
               </label>
               <label className="block text-sm">
-                <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
-                  Load No
-                </span>
+                <FieldLabel>Load No</FieldLabel>
                 <input
                   name="loadNo"
                   defaultValue={modal === "add" ? "" : modal.loadNo}
-                  className="w-full rounded border border-[var(--color-blue)]/25 px-2 py-1.5 text-sm uppercase"
+                  className={inputClass(undefined, "uppercase")}
                   onBlur={(e) => {
                     e.currentTarget.value = toAllCaps(e.currentTarget.value);
                   }}
                 />
               </label>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  className="h-9 rounded border px-3 text-sm"
-                  onClick={() => setModal(null)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="h-9 rounded bg-[var(--color-gold)] px-3 text-sm font-bold text-[var(--color-blue)]"
-                >
-                  Save
-                </button>
-              </div>
             </form>
-          </div>
-        </div>
+        </PopupWindow>
       ) : null}
     </div>
   );

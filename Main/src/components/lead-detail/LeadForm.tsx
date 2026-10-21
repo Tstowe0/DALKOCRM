@@ -1,12 +1,20 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useActor } from "@/lib/use-actor";
 import { useRouter } from "next/navigation";
 import { StatusFlow } from "@/components/lead-detail/StatusFlow";
 import { CollapsibleSection } from "@/components/shell/CollapsibleSection";
 import { AttachmentsPanel } from "@/components/lead-detail/AttachmentsPanel";
 import { SpecField } from "@/components/lead-detail/SpecField";
 import { NewEmailModal } from "@/components/shell/NewEmailModal";
+import { ConvertToClientModal } from "@/components/shell/ConvertToClientModal";
+import { useDialog } from "@/components/shell/dialogs";
+import {
+  FieldError,
+  FieldLabel,
+  inputClass,
+} from "@/components/shell/formFields";
 import {
   ActivitiesSection,
   CampaignsSection,
@@ -41,7 +49,7 @@ import {
   LEAD_STATUSES,
   PROSPECT_STATUSES,
   TMS_STATUSES,
-  normalizeTmsStatus,
+  parseTmsStatus,
 } from "@/domain/status";
 
 type Props = {
@@ -72,7 +80,7 @@ type Props = {
   deleteAttachmentAction?: (attachmentId: string) => Promise<void>;
   uploadLogoAction?: (formData: FormData) => Promise<void>;
   convertToProspectAction?: () => Promise<void>;
-  convertToClientAction?: () => Promise<void>;
+  convertToClientAction?: (tmsStatus: string) => Promise<void>;
   deleteAction?: () => Promise<void>;
   composeEmailAction?: (payload: {
     to: string;
@@ -80,6 +88,7 @@ type Props = {
     bcc: string;
     subject: string;
     body: string;
+    from?: string;
   }) => Promise<void>;
   uploadEmailAction?: (formData: FormData) => Promise<void>;
   deleteEmailAction?: (emailId: string) => Promise<void>;
@@ -170,6 +179,8 @@ export function LeadForm({
   deleteNoteAction,
 }: Props) {
   const router = useRouter();
+  const { confirm, alert } = useDialog();
+  const { fullName: actorName } = useActor();
   const isProspect = kind === "prospect";
   const isClient = kind === "client";
   const entity = isClient ? "Client" : isProspect ? "Prospect" : "Lead";
@@ -185,16 +196,18 @@ export function LeadForm({
       (isClient ? "Client" : isProspect ? "Present" : "New Lead")
   );
   const [tmsStatus, setTmsStatus] = useState(
-    normalizeTmsStatus(company?.tmsStatus)
+    mode === "create" ? "" : parseTmsStatus(company?.tmsStatus) ?? ""
   );
   const [dirty, setDirty] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [toast, setToast] = useState<string | null>(null);
   const [emailAttach, setEmailAttach] = useState<Attachment | null>(null);
+  const [convertOpen, setConvertOpen] = useState(false);
   const [sameAsMailing, setSameAsMailing] = useState(
     company?.physicalSameAsMailing ?? true
   );
   const [noteDraft, setNoteDraft] = useState("");
+  const [logoError, setLogoError] = useState<string | null>(null);
 
   const title = useMemo(() => {
     if (mode === "create") {
@@ -212,15 +225,15 @@ export function LeadForm({
     if (mode === "create") setDirty(true);
   }
 
-  function handleBack() {
+  async function handleBack() {
     if (noteDraft.trim()) {
-      window.alert(
+      await alert(
         `The Note that was entered has not been added to the ${entity}. Click the Add Note button before leaving to add the note to the ${entity}'s file.`
       );
       return;
     }
     if (mode === "create" && dirty) {
-      const proceed = window.confirm(
+      const proceed = await confirm(
         "The data entered has not been saved. Do you wish to proceed?"
       );
       if (!proceed) return;
@@ -247,6 +260,9 @@ export function LeadForm({
     if (!String(fd.get("status") ?? "").trim()) {
       next.status = "Status is required";
     }
+    if (isClient && !parseTmsStatus(String(fd.get("tmsStatus") ?? ""))) {
+      next.tmsStatus = "TMS Status is required";
+    }
     setErrors(next);
     if (Object.keys(next).length) e.preventDefault();
   }
@@ -255,7 +271,7 @@ export function LeadForm({
     if (!onSaveField) return;
     await onSaveField(field, value);
     if (field === "status") setStatus(String(value));
-    if (field === "tmsStatus") setTmsStatus(normalizeTmsStatus(String(value)));
+    if (field === "tmsStatus") setTmsStatus(parseTmsStatus(String(value)) ?? "");
     if (field === "clientType") setClientType(String(value));
     if (field === "companyName") router.refresh();
     router.refresh();
@@ -293,9 +309,7 @@ export function LeadForm({
                   <button
                     type="button"
                     className="h-8 rounded border border-white/30 bg-white/10 px-3 text-xs font-semibold hover:bg-white/20"
-                    onClick={async () => {
-                      await convertToClientAction();
-                    }}
+                    onClick={() => setConvertOpen(true)}
                   >
                     Convert to Client
                   </button>
@@ -304,7 +318,7 @@ export function LeadForm({
                   type="button"
                   className="h-8 rounded border border-red-300/50 bg-red-600/80 px-3 text-xs font-semibold hover:bg-red-600"
                   onClick={async () => {
-                    const ok = window.confirm(
+                    const ok = await confirm(
                       `The selected ${entity}(s) will be permanently deleted. Do you wish to continue?`
                     );
                     if (!ok || !deleteAction) return;
@@ -312,7 +326,7 @@ export function LeadForm({
                       await deleteAction();
                       router.push(basePath);
                     } catch (e) {
-                      window.alert(
+                      await alert(
                         e instanceof Error ? e.message : "Delete failed"
                       );
                     }
@@ -357,13 +371,27 @@ export function LeadForm({
             {mode === "edit" && uploadLogoAction ? (
               <form
                 action={uploadLogoAction}
+                noValidate
                 className="flex flex-wrap items-end gap-2 text-sm"
+                onSubmit={(e) => {
+                  const fd = new FormData(e.currentTarget);
+                  const file = fd.get("logo");
+                  if (!(file instanceof File) || file.size === 0) {
+                    e.preventDefault();
+                    setLogoError("Company Logo is required");
+                  }
+                }}
               >
                 <label className="block">
-                  <span className="mb-0.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-blue)]/75">
-                    Company Logo
-                  </span>
-                  <input type="file" name="logo" accept="image/*" required />
+                  <FieldLabel required>Company Logo</FieldLabel>
+                  <input
+                    type="file"
+                    name="logo"
+                    accept="image/*"
+                    className={inputClass(logoError ?? undefined)}
+                    onChange={() => setLogoError(null)}
+                  />
+                  <FieldError error={logoError ?? undefined} />
                 </label>
                 <button
                   type="submit"
@@ -416,7 +444,7 @@ export function LeadForm({
                 error={errors.tmsStatus}
                 options={TMS_STATUSES.map((s) => ({ value: s, label: s }))}
                 onCreateChange={(v) => {
-                  setTmsStatus(normalizeTmsStatus(v));
+                  setTmsStatus(parseTmsStatus(v) ?? "");
                   markDirty();
                 }}
                 onSaveField={saveField}
@@ -561,7 +589,7 @@ export function LeadForm({
             required
             mode={mode}
             uppercase
-            displayValue={company?.salesperson ?? "DEMO SALESPERSON"}
+            displayValue={company?.salesperson ?? actorName}
             error={errors.salesperson}
             transform={toAllCaps}
             onCreateChange={markDirty}
@@ -697,7 +725,7 @@ export function LeadForm({
       <CollapsibleSection title="Contacts">
         {mode === "create" || !addContactAction || !removeContactAction ? (
           <p className="rounded border border-dashed border-[var(--color-blue)]/20 bg-[var(--color-table-tint)]/30 px-3 py-4 text-sm text-[var(--color-blue)]/65">
-            Save the Lead first, then add contacts here.
+            Save the {entity} first, then add contacts here.
           </p>
         ) : (
           <ContactsSection
@@ -719,7 +747,7 @@ export function LeadForm({
       <CollapsibleSection title="Attachments">
         {mode === "create" || !uploadAttachmentAction ? (
           <p className="rounded border border-dashed border-[var(--color-blue)]/20 bg-[var(--color-table-tint)]/30 px-3 py-4 text-sm text-[var(--color-blue)]/65">
-            Save the Lead first to upload attachments.
+            Save the {entity} first to upload attachments.
           </p>
         ) : (
           <AttachmentsPanel
@@ -738,6 +766,7 @@ export function LeadForm({
           open
           subject={emailAttach.fileName}
           attachmentName={emailAttach.fileName}
+          defaultCompanyId={company?.id}
           onClose={() => setEmailAttach(null)}
           onSend={
             composeEmailAction
@@ -756,7 +785,7 @@ export function LeadForm({
       <CollapsibleSection title="Emails" defaultOpen={false}>
         {mode === "create" || !composeEmailAction ? (
           <p className="rounded border border-dashed border-[var(--color-blue)]/20 bg-[var(--color-table-tint)]/30 px-3 py-4 text-sm text-[var(--color-blue)]/65">
-            Save the Lead first to manage emails.
+            Save the {entity} first to manage emails.
           </p>
         ) : (
           <EmailsSection
@@ -771,7 +800,7 @@ export function LeadForm({
       <CollapsibleSection title="Activities" defaultOpen={false}>
         {mode === "create" || !createActivityAction ? (
           <p className="rounded border border-dashed border-[var(--color-blue)]/20 bg-[var(--color-table-tint)]/30 px-3 py-4 text-sm text-[var(--color-blue)]/65">
-            Save the Lead first to manage activities.
+            Save the {entity} first to manage activities.
           </p>
         ) : (
           <ActivitiesSection
@@ -786,7 +815,7 @@ export function LeadForm({
       <CollapsibleSection title="Campaigns" defaultOpen={false}>
         {mode === "create" || !addCampaignAction ? (
           <p className="rounded border border-dashed border-[var(--color-blue)]/20 bg-[var(--color-table-tint)]/30 px-3 py-4 text-sm text-[var(--color-blue)]/65">
-            Save the Lead first to manage campaigns.
+            Save the {entity} first to manage campaigns.
           </p>
         ) : (
           <CampaignsSection
@@ -821,7 +850,7 @@ export function LeadForm({
       <CollapsibleSection title="Contact Log" defaultOpen={false}>
         {mode === "create" || !createContactLogAction ? (
           <p className="rounded border border-dashed border-[var(--color-blue)]/20 bg-[var(--color-table-tint)]/30 px-3 py-4 text-sm text-[var(--color-blue)]/65">
-            Save the Lead first to manage the contact log.
+            Save the {entity} first to manage the contact log.
           </p>
         ) : (
           <ContactLogSection
@@ -838,7 +867,7 @@ export function LeadForm({
       <CollapsibleSection title="Notes" defaultOpen={false}>
         {mode === "create" || !addNoteAction ? (
           <p className="rounded border border-dashed border-[var(--color-blue)]/20 bg-[var(--color-table-tint)]/30 px-3 py-4 text-sm text-[var(--color-blue)]/65">
-            Save the Lead first to add notes.
+            Save the {entity} first to add notes.
           </p>
         ) : (
           <NotesSection
@@ -871,6 +900,18 @@ export function LeadForm({
           </button>
         </div>
       ) : null}
+
+      {convertOpen && convertToClientAction ? (
+        <ConvertToClientModal
+          open
+          companyName={company?.companyName || title}
+          currentStatus={status}
+          onClose={() => setConvertOpen(false)}
+          onProceed={async (tmsStatus) => {
+            await convertToClientAction(tmsStatus);
+          }}
+        />
+      ) : null}
     </>
   );
 
@@ -880,6 +921,7 @@ export function LeadForm({
         action={createAction}
         onSubmit={onCreateSubmit}
         onChange={markDirty}
+        noValidate
         className="space-y-3"
       >
         {body}

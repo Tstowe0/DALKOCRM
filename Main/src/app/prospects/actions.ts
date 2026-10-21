@@ -10,9 +10,9 @@ import {
   updateCompanyField,
   type CompanyInput,
 } from "@/data/companies";
-import { DEMO_USER } from "@/lib/paths";
+import { getActor } from "@/lib/actor";
 import { parseCurrency } from "@/domain/formatting";
-import { isProspectStatus } from "@/domain/status";
+import { isProspectStatus, requireTmsStatus } from "@/domain/status";
 
 function revalidateProspect(companyId?: string) {
   revalidatePath("/prospects");
@@ -77,6 +77,9 @@ export async function saveNewProspectAction(formData: FormData) {
     input.physicalState = input.mailingState;
     input.physicalPostal = input.mailingPostal;
   }
+  if (!input.salesperson.trim()) {
+    input.salesperson = (await getActor()).fullName;
+  }
   const company = createCompany(input);
   revalidateProspect(company.id);
   redirect(`/prospects/${company.id}`);
@@ -101,7 +104,8 @@ export async function saveProspectFieldAction(
   if (field === "industry" && typeof value === "string") {
     next = value ? value.split("|").filter(Boolean) : [];
   }
-  updateCompanyField(id, field, next);
+  const actor = await getActor();
+  updateCompanyField(id, field, next, actor.fullName);
   revalidateProspect(id);
 }
 
@@ -110,8 +114,23 @@ export async function deleteProspectAction(id: string) {
   revalidateProspect();
 }
 
-export async function convertProspectToClientAction(id: string) {
-  setCompanyStatus(id, "Client");
+/** List More menu — Library Prospects spec returns the user to the Prospects screen. */
+export async function convertProspectToClientAction(
+  id: string,
+  tmsStatus: string
+) {
+  const actor = await getActor();
+  setCompanyStatus(id, "Client", requireTmsStatus(tmsStatus), actor.fullName);
+  revalidateProspect(id);
+}
+
+/** Detail header — open the company on the Clients route. */
+export async function convertProspectToClientAndOpenAction(
+  id: string,
+  tmsStatus: string
+) {
+  const actor = await getActor();
+  setCompanyStatus(id, "Client", requireTmsStatus(tmsStatus), actor.fullName);
   revalidateProspect(id);
   redirect(`/clients/${id}`);
 }
@@ -130,8 +149,9 @@ export async function massDeleteProspectsAction(ids: string[]) {
 }
 
 export async function massConvertProspectsAction(ids: string[]) {
+  const actor = await getActor();
   for (const id of ids) {
-    setCompanyStatus(id, "Client");
+    setCompanyStatus(id, "Client", undefined, actor.fullName);
   }
   revalidateProspect();
 }
@@ -204,7 +224,7 @@ export async function importProspectsCsvAction(formData: FormData) {
       website: get("website"),
       linkedin: get("linked inn") || get("linkedin"),
       salesTerritory: get("sales territory"),
-      salesperson: get("salesperson") || DEMO_USER.fullName,
+      salesperson: get("salesperson") || (await getActor()).fullName,
       office: get("office"),
       lastContact: get("last contacted") || get("last contact"),
       mailingCountry:

@@ -1,0 +1,34 @@
+---
+description: All popups (confirm, alert, form dialogs, lookups) must use the shared PopupWindow chrome — never native browser dialogs.
+globs: Main/src/**/*.{tsx,css}
+alwaysApply: true
+---
+
+# Themed popups
+
+Never use `window.alert`, `window.confirm`, or `window.prompt`. Those follow the OS/browser, not MyCRM.
+
+Use `useDialog()` from `@/components/shell/dialogs`:
+- `await confirm(message)` for OK / Cancel
+- `await alert(message)` (or `void alert(...)`) for OK-only
+
+Form / work-surface overlays use `PopupWindow` from `@/components/shell/PopupWindow` (navy title bar, white body, footer Cancel + navy primary). Confirm/alert use the same chrome at `z-[200]`.
+
+Do not hand-roll a second overlay style. Import Clients is the visual reference.
+
+```tsx
+// ❌ BAD
+const ok = window.confirm("The selected Lead(s) will be permanently deleted. Do you wish to continue?");
+<div className="fixed inset-0 ..."><div className="bg-white p-4">...</div></div>
+
+// ✅ GOOD
+const { confirm, alert } = useDialog();
+const ok = await confirm("The selected Lead(s) will be permanently deleted. Do you wish to continue?");
+if (!ok) return;
+
+<PopupWindow title="Import Clients" onClose={...} footer={...}>
+  ...
+</PopupWindow>
+```
+
+Shared reference: `Design Rules.md` → Popups.

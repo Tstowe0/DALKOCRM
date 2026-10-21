@@ -1,6 +1,12 @@
 import { LeadsBoard } from "@/components/leads/LeadsBoard";
 import { listProspectRows, listSalespeople } from "@/data/companies";
-import { uploadAttachmentAction } from "@/app/leads/actions";
+import {
+  addCampaignAction,
+  addContactAction,
+  composeEmailAction,
+  createActivityAction,
+  uploadAttachmentAction,
+} from "@/app/leads/actions";
 import {
   convertProspectToClientAction,
   deleteProspectAction,
@@ -26,6 +32,10 @@ export default function ProspectsPage() {
       deleteAction={deleteProspectAction}
       massDeleteAction={massDeleteProspectsAction}
       massConvertAction={massConvertProspectsAction}
+      composeEmailAction={composeEmailAction}
+      addContactAction={addContactAction}
+      addCampaignAction={addCampaignAction}
+      createActivityAction={createActivityAction}
     />
   );
 }

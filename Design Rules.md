@@ -218,6 +218,25 @@ Auto-format on entry:
 
 - Leaving with dirty data shows a confirmation (Save / Proceed without saving / Cancel — wording per screen).
 
+### Popups
+
+All popups are **themed in-app overlays**. Never use native `window.alert`, `window.confirm`, or `window.prompt`.
+
+Use the shared `PopupWindow` chrome (`Main/src/components/shell/PopupWindow.tsx`) for every overlay — confirm, alert, import, email, convert, lookups, and add/edit windows. Do not invent a second dialog style.
+
+| Element | Rule |
+|--------|------|
+| Backdrop | Dimmed (`black/50`) + light blur (`POPUP_OVERLAY`) |
+| Panel | White, rounded, navy-tinted border, `shadow-lg`, max height `90vh` |
+| Title bar | `--color-blue` fill, white Verdana title, × close on the right |
+| Body | White, Open Sans; scroll inside the panel |
+| Footer | Top border, actions bottom-right: **Cancel then primary** |
+| Primary (OK / Save / Import / Send / Proceed) | Navy `--color-blue` fill, white Verdana label (`POPUP_BTN_PRIMARY`) |
+| Secondary (Cancel / Close) | White fill, navy border (`POPUP_BTN_CANCEL`) |
+| Gold | In-body emphasis only (e.g. Download template), not the footer primary |
+
+Confirm / alert use the same window with title **Confirm** or **Notice**. Call them through `useDialog()`.
+
 ---
 
 ## CRM terminology (status pipeline)

@@ -10,8 +10,8 @@ Not a goal: pixel-clone every Word screenshot.
 | Area | Score | Notes |
 |------|-------|--------|
 | Appearance shell | **100%** | Written bullets + Design Rules |
-| Leads list | **100%** | List/search/actions/import/compose |
-| Prospects list | **~100%** | Twin of Leads; Present–On Board; Prospect Source; Convert→Client only |
+| Leads list | **~98%** | Convert to Client window + list Add windows; Email Lookup on compose; Export still CSV |
+| Prospects list | **~98%** | Twin of Leads; Convert to Client window; Export still CSV |
 | Clients list | **~95%** | First Draft only; TMS Active/Deactivated; no Convert/Mass Convert; no Source column |
 | Attachments | **100%** | Library upload/table/more (scanner ignored) |
 | Add Lead full screen | **~95%** | Sortable tables, Contact Lookup, bordered Company Info subsections, notes draft guard, fuller section windows, seeded demo data |
@@ -43,7 +43,7 @@ Not a goal: pixel-clone every Word screenshot.
 - Dedicated Claims / Campaigns Library list specs (PoC inferred)
 - Full Contact Information page (PoC uses modal; FD shows full page)
 - Client First Draft TMS financial blocks (rating, credit, aging, etc.)
-- Email Lookup on New Email compose (Library details Email Lookup separately)
+- Email Lookup is built (Company/All, Search By, results table). Schema still lacks First/Last Name, Department, Reports To, Contact Source.
 - Exact mockup iconography / column widths
 - Contact Department field (FD expand shows it; not in PoC schema)
 - More nav: Enquiry / Feeds / Survey

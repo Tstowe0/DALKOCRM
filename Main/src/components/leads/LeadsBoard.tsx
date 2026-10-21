@@ -22,6 +22,18 @@ import {
 import { AttachmentsPanel } from "@/components/lead-detail/AttachmentsPanel";
 import { MultiCheckDropdown } from "@/components/leads/MultiCheckDropdown";
 import { NewEmailModal } from "@/components/shell/NewEmailModal";
+import { MoreMenu } from "@/components/shell/MoreMenu";
+import { ConvertToClientModal } from "@/components/shell/ConvertToClientModal";
+import { useDialog } from "@/components/shell/dialogs";
+import {
+  downloadCsvTemplate,
+  ImportCsvModal,
+} from "@/components/shell/ImportCsvModal";
+import {
+  AddCampaignWindow,
+  AddContactWindow,
+  ScheduleActivityWindow,
+} from "@/components/shell/CompanyAddModals";
 
 type SearchRow = {
   id: string;
@@ -31,6 +43,55 @@ type SearchRow = {
 };
 
 export type CompaniesBoardVariant = "lead" | "prospect" | "client";
+
+function downloadImportTemplate(kind: CompaniesBoardVariant) {
+  const shared = [
+    "Client Type",
+    "Industry",
+    "Annual Revenue",
+    "Website",
+    "LinkedIn",
+    "Sales Territory",
+    "Salesperson",
+    "Office",
+    "Last Contact",
+    "Mailing Country",
+    "Mailing Address 1",
+    "Mailing Address 2",
+    "Mailing City",
+    "Mailing State",
+    "Mailing Postal",
+  ];
+  const source =
+    kind === "client"
+      ? "Client Source"
+      : kind === "prospect"
+        ? "Prospect Source"
+        : "Source";
+  const statusCol = kind === "client" ? "TMS Status" : "Status";
+  const headers = ["Company Name", statusCol, source, ...shared];
+  const sample = [
+    "EXAMPLE LOGISTICS LLC",
+    kind === "client" ? "Active" : kind === "prospect" ? "Present" : "New Lead",
+    kind === "client" ? "REFERRAL" : kind === "prospect" ? "TRADE SHOW" : "WEB",
+    "Standard",
+    "RAIL",
+    "1000000",
+    "https://example.com",
+    "",
+    "EAST",
+    "",
+    "PITTSBURGH",
+    "01/15/2026",
+    "USA",
+    "100 MAIN ST",
+    "",
+    "PITTSBURGH",
+    "PA",
+    "15222",
+  ];
+  downloadCsvTemplate(`mycrm-${kind}-import-template.csv`, headers, sample);
+}
 
 type Props = {
   variant?: CompaniesBoardVariant;
@@ -42,10 +103,24 @@ type Props = {
     formData: FormData
   ) => Promise<void>;
   convertToProspectAction?: (id: string) => Promise<void>;
-  convertToClientAction?: (id: string) => Promise<void>;
+  convertToClientAction?: (id: string, tmsStatus: string) => Promise<void>;
   deleteAction: (id: string) => Promise<void>;
   massDeleteAction: (ids: string[]) => Promise<void>;
   massConvertAction?: (ids: string[]) => Promise<void>;
+  addContactAction: (companyId: string, formData: FormData) => Promise<void>;
+  addCampaignAction: (companyId: string, formData: FormData) => Promise<void>;
+  createActivityAction: (companyId: string, formData: FormData) => Promise<void>;
+  composeEmailAction: (
+    companyId: string,
+    payload: {
+      to: string;
+      cc: string;
+      bcc: string;
+      subject: string;
+      body: string;
+      from?: string;
+    }
+  ) => Promise<void>;
 };
 
 const PAGE_SIZES = [10, 25, 50, 100];
@@ -61,6 +136,10 @@ export function LeadsBoard({
   deleteAction,
   massDeleteAction,
   massConvertAction,
+  addContactAction,
+  addCampaignAction,
+  createActivityAction,
+  composeEmailAction,
 }: Props) {
   const isProspect = variant === "prospect";
   const isClient = variant === "client";
@@ -80,6 +159,7 @@ export function LeadsBoard({
   const showSourceColumn = !isClient;
   const showMassConvert = Boolean(massConvertAction);
   const router = useRouter();
+  const { confirm, alert } = useDialog();
   const [pending, startTransition] = useTransition();
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [salespersonFilter, setSalespersonFilter] = useState<string[]>([]);
@@ -93,7 +173,6 @@ export function LeadsBoard({
   });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<string>("companyName");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [pageSize, setPageSize] = useState(10);
@@ -101,11 +180,16 @@ export function LeadsBoard({
   const [attachFor, setAttachFor] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
-  const [importBusy, setImportBusy] = useState(false);
   const [emailOpen, setEmailOpen] = useState<{
     to?: string;
     bcc?: string;
     subject?: string;
+    companyIds: string[];
+  } | null>(null);
+  const [convertFor, setConvertFor] = useState<LeadListRow | null>(null);
+  const [addFor, setAddFor] = useState<{
+    kind: "contact" | "campaign" | "activity";
+    row: LeadListRow;
   } | null>(null);
 
   const filtered = useMemo(() => {
@@ -252,7 +336,7 @@ export function LeadsBoard({
       return s.field && !s.value.trim();
     });
     if (missing) {
-      window.alert("Please enter search criteria");
+      void alert("Please enter search criteria");
       return;
     }
     setApplied({
@@ -266,7 +350,7 @@ export function LeadsBoard({
 
   function requireSelection(): string[] | null {
     if (selected.size === 0) {
-      window.alert(`Please select ${entity}(s) to continue`);
+      void alert(`Please select ${entity}(s) to continue`);
       return null;
     }
     return [...selected];
@@ -358,7 +442,7 @@ export function LeadsBoard({
           </Link>
           <button
             type="button"
-            title={`Upload ${plural} from CSV`}
+            title={`Upload ${plural} from Excel or CSV`}
             className="inline-flex h-9 items-center rounded border border-[var(--color-blue)]/25 bg-white px-4 text-sm text-[var(--color-blue)]"
             onClick={() => setImportOpen(true)}
           >
@@ -375,33 +459,37 @@ export function LeadsBoard({
               if (!ids) return;
               if (action === "Export") exportSelected();
               if (action === "Mass Delete") {
-                const ok = window.confirm(
-                  `The selected ${plural} will be permanently deleted. Do you wish to continue?`
-                );
-                if (!ok) return;
-                startTransition(async () => {
-                  try {
-                    await massDeleteAction(ids);
-                    setSelected(new Set());
-                    router.refresh();
-                  } catch (err) {
-                    window.alert(
-                      err instanceof Error ? err.message : "Delete failed"
-                    );
-                  }
-                });
+                void (async () => {
+                  const ok = await confirm(
+                    `The selected ${plural} will be permanently deleted. Do you wish to continue?`
+                  );
+                  if (!ok) return;
+                  startTransition(async () => {
+                    try {
+                      await massDeleteAction(ids);
+                      setSelected(new Set());
+                      router.refresh();
+                    } catch (err) {
+                      void alert(
+                        err instanceof Error ? err.message : "Delete failed"
+                      );
+                    }
+                  });
+                })();
               }
               if (action === "Mass Convert") {
                 if (!massConvertAction) return;
-                const ok = window.confirm(
-                  `The selected ${plural} will be converted to Clients. Do you wish to continue?`
-                );
-                if (!ok) return;
-                startTransition(async () => {
-                  await massConvertAction(ids);
-                  setSelected(new Set());
-                  router.refresh();
-                });
+                void (async () => {
+                  const ok = await confirm(
+                    `The selected ${plural} will be converted to Clients. Do you wish to continue?`
+                  );
+                  if (!ok) return;
+                  startTransition(async () => {
+                    await massConvertAction(ids);
+                    setSelected(new Set());
+                    router.refresh();
+                  });
+                })();
               }
               if (action === "Mass Email") {
                 const bcc = initialRows
@@ -411,6 +499,7 @@ export function LeadsBoard({
                 setEmailOpen({
                   bcc,
                   subject: "DALKO MyCRM",
+                  companyIds: ids,
                 });
               }
             }}
@@ -707,21 +796,17 @@ export function LeadsBoard({
                   },
                   {
                     label: "Add Campaign",
-                    run: () => router.push("/campaigns"),
+                    run: () => setAddFor({ kind: "campaign", row: lead }),
                   },
                   {
                     label: "Add Contact",
-                    run: () => router.push(`${basePath}/${lead.id}`),
+                    run: () => setAddFor({ kind: "contact", row: lead }),
                   },
                   ...(convertToClientAction
                     ? [
                         {
                           label: "Convert to Client",
-                          run: () =>
-                            startTransition(async () => {
-                              await convertToClientAction(lead.id);
-                              router.refresh();
-                            }),
+                          run: () => setConvertFor(lead),
                         },
                       ]
                     : []),
@@ -742,14 +827,14 @@ export function LeadsBoard({
                     run: () => {
                       void (async () => {
                         try {
-                          const ok = window.confirm(
+                          const ok = await confirm(
                             `The selected ${entity}(s) will be permanently deleted. Do you wish to continue?`
                           );
                           if (!ok) return;
                           await deleteAction(lead.id);
                           router.refresh();
                         } catch (err) {
-                          window.alert(
+                          void alert(
                             err instanceof Error
                               ? err.message
                               : "Delete failed"
@@ -760,10 +845,7 @@ export function LeadsBoard({
                   },
                   {
                     label: "Schedule Activity",
-                    run: () =>
-                      setMessage(
-                        "Schedule Activity — reserved until Activities section is built."
-                      ),
+                    run: () => setAddFor({ kind: "activity", row: lead }),
                   },
                   {
                     label: "Send Email",
@@ -771,6 +853,7 @@ export function LeadsBoard({
                       setEmailOpen({
                         to: lead.primaryEmail || "",
                         subject: lead.companyName,
+                        companyIds: [lead.id],
                       }),
                   },
                 ].sort((a, b) => a.label.localeCompare(b.label));
@@ -790,43 +873,21 @@ export function LeadsBoard({
                           }}
                         />
                       </td>
-                      <td className="relative px-2 py-2">
-                        <button
-                          type="button"
+                      <td className="px-2 py-2">
+                        <MoreMenu
                           title="More Options"
-                          className="rounded px-2 hover:bg-black/5"
-                          onClick={() =>
-                            setOpenMenu((id) =>
-                              id === lead.id ? null : lead.id
-                            )
-                          }
-                        >
-                          ⋯
-                        </button>
-                        {openMenu === lead.id ? (
-                          <div className="absolute left-0 z-30 mt-1 min-w-[180px] rounded border border-[var(--color-table-line)]/30 bg-white py-1 text-left shadow-sm">
-                            <Link
-                              href={`${basePath}/${lead.id}`}
-                              className="block px-3 py-1.5 hover:bg-black/5"
-                              onClick={() => setOpenMenu(null)}
-                            >
-                              Edit/View
-                            </Link>
-                            {moreItems.map((item) => (
-                              <button
-                                key={item.label}
-                                type="button"
-                                className="block w-full px-3 py-1.5 text-left hover:bg-black/5"
-                                onClick={() => {
-                                  setOpenMenu(null);
-                                  item.run();
-                                }}
-                              >
-                                {item.label}
-                              </button>
-                            ))}
-                          </div>
-                        ) : null}
+                          items={[
+                            {
+                              label: "Edit/View",
+                              href: `${basePath}/${lead.id}`,
+                            },
+                            ...moreItems.map((item) => ({
+                              label: item.label,
+                              onClick: item.run,
+                              danger: item.label === "Delete",
+                            })),
+                          ]}
+                        />
                       </td>
                       <td className="px-3 py-2">
                         <button
@@ -997,82 +1058,26 @@ export function LeadsBoard({
         </div>
       </div>
 
-      {importOpen ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded border border-[var(--color-blue)]/30 bg-white p-4 shadow-lg">
-            <div className="mb-3 flex items-center justify-between">
-              <h2
-                className="text-sm font-bold text-[var(--color-blue)]"
-                style={{ fontFamily: "var(--font-heading)" }}
-              >
-                Import {plural}
-              </h2>
-              <button type="button" onClick={() => setImportOpen(false)}>
-                ×
-              </button>
-            </div>
-            <p className="mb-3 text-xs text-[var(--color-table-line)]">
-              Upload a CSV with headers matching Export columns (Company Name,
-              Status,{" "}
-              {isClient
-                ? "Client Source"
-                : isProspect
-                  ? "Prospect Source"
-                  : "Source"}
-              , etc.). Full legacy Excel import rules from the current CRM are
-              not in the Library docs.
-            </p>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const fd = new FormData(e.currentTarget);
-                setImportBusy(true);
-                startTransition(async () => {
-                  try {
-                    const result = await importCsvAction(fd);
-                    setImportOpen(false);
-                    setMessage(
-                      `Imported ${result.created} ${
-                        isClient
-                          ? "client"
-                          : isProspect
-                            ? "prospect"
-                            : "lead"
-                      }(s).`
-                    );
-                    router.refresh();
-                  } catch (err) {
-                    window.alert(
-                      err instanceof Error ? err.message : "Import failed"
-                    );
-                  } finally {
-                    setImportBusy(false);
-                  }
-                });
-              }}
-              className="space-y-3"
-            >
-              <input type="file" name="file" accept=".csv,text/csv" required />
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  className="h-9 rounded border px-3 text-sm"
-                  onClick={() => setImportOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={importBusy}
-                  className="h-9 rounded bg-[var(--color-blue)] px-3 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  Import
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : null}
+      <ImportCsvModal
+        open={importOpen}
+        title={`Import ${plural}`}
+        hint="Download the template, fill in your rows, then upload the CSV. Company Name is required. Leave Salesperson blank to use your signed-in name."
+        downloadLabel={`Download ${plural} template`}
+        onDownloadTemplate={() => downloadImportTemplate(variant)}
+        onClose={() => setImportOpen(false)}
+        onImport={async (file) => {
+          const fd = new FormData();
+          fd.set("file", file);
+          const result = await importCsvAction(fd);
+          setImportOpen(false);
+          setMessage(
+            `Imported ${result.created} ${
+              isClient ? "client" : isProspect ? "prospect" : "lead"
+            }(s).`
+          );
+          router.refresh();
+        }}
+      />
 
       {emailOpen ? (
         <NewEmailModal
@@ -1081,7 +1086,62 @@ export function LeadsBoard({
           to={emailOpen.to}
           bcc={emailOpen.bcc}
           subject={emailOpen.subject}
+          defaultCompanyId={
+            emailOpen.companyIds.length === 1 ? emailOpen.companyIds[0] : undefined
+          }
           onClose={() => setEmailOpen(null)}
+          onSend={async (payload) => {
+            for (const companyId of emailOpen.companyIds) {
+              await composeEmailAction(companyId, payload);
+            }
+            router.refresh();
+          }}
+        />
+      ) : null}
+
+      {convertFor && convertToClientAction ? (
+        <ConvertToClientModal
+          open
+          companyName={convertFor.companyName}
+          currentStatus={
+            isClient
+              ? normalizeTmsStatus(convertFor.tmsStatus)
+              : convertFor.status
+          }
+          onClose={() => setConvertFor(null)}
+          onProceed={async (tmsStatus) => {
+            await convertToClientAction(convertFor.id, tmsStatus);
+            setConvertFor(null);
+            router.refresh();
+          }}
+        />
+      ) : null}
+
+      {addFor?.kind === "contact" ? (
+        <AddContactWindow
+          companyId={addFor.row.id}
+          companyName={addFor.row.companyName}
+          onClose={() => setAddFor(null)}
+          onSaved={() => router.refresh()}
+          onAdd={(fd) => addContactAction(addFor.row.id, fd)}
+        />
+      ) : null}
+      {addFor?.kind === "campaign" ? (
+        <AddCampaignWindow
+          companyId={addFor.row.id}
+          companyName={addFor.row.companyName}
+          onClose={() => setAddFor(null)}
+          onSaved={() => router.refresh()}
+          onAdd={(fd) => addCampaignAction(addFor.row.id, fd)}
+        />
+      ) : null}
+      {addFor?.kind === "activity" ? (
+        <ScheduleActivityWindow
+          companyId={addFor.row.id}
+          companyName={addFor.row.companyName}
+          onClose={() => setAddFor(null)}
+          onSaved={() => router.refresh()}
+          onAdd={(fd) => createActivityAction(addFor.row.id, fd)}
         />
       ) : null}
     </div>

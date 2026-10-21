@@ -20,6 +20,8 @@ export type ContactListRow = Contact & {
   companyStatus: string;
   salesperson: string;
   lastContact: string;
+  salesTerritory: string;
+  office: string;
 };
 
 type ContactRow = {
@@ -68,7 +70,9 @@ export function listAllContactRows(): ContactListRow[] {
               co.company_name AS company_name,
               co.status AS company_status,
               co.salesperson AS salesperson,
-              co.last_contact AS last_contact
+              co.last_contact AS last_contact,
+              co.sales_territory AS sales_territory,
+              co.office AS office
          FROM contacts c
          JOIN companies co ON co.id = c.company_id
      ORDER BY c.name COLLATE NOCASE`
@@ -79,6 +83,8 @@ export function listAllContactRows(): ContactListRow[] {
       company_status: string;
       salesperson: string;
       last_contact: string;
+      sales_territory: string;
+      office: string;
     }
   >;
 
@@ -88,6 +94,8 @@ export function listAllContactRows(): ContactListRow[] {
     companyStatus: row.company_status,
     salesperson: row.salesperson,
     lastContact: row.last_contact,
+    salesTerritory: row.sales_territory,
+    office: row.office,
   }));
 }
 

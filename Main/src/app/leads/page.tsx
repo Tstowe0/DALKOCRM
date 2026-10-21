@@ -1,8 +1,12 @@
 import { LeadsBoard } from "@/components/leads/LeadsBoard";
 import { listLeadRows, listSalespeople } from "@/data/companies";
 import {
+  addCampaignAction,
+  addContactAction,
+  composeEmailAction,
   convertLeadToClientAction,
   convertLeadToProspectAction,
+  createActivityAction,
   deleteLeadAction,
   importLeadsCsvAction,
   massConvertLeadsAction,
@@ -28,6 +32,10 @@ export default function LeadsPage() {
       deleteAction={deleteLeadAction}
       massDeleteAction={massDeleteLeadsAction}
       massConvertAction={massConvertLeadsAction}
+      composeEmailAction={composeEmailAction}
+      addContactAction={addContactAction}
+      addCampaignAction={addCampaignAction}
+      createActivityAction={createActivityAction}
     />
   );
 }

@@ -1,14 +1,35 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useMemo, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ContactListRow } from "@/data/contacts";
 import { companyDetailHref } from "@/domain/status";
 import { formatPhoneUs, toAllCaps } from "@/domain/formatting";
 import { MultiCheckDropdown } from "@/components/leads/MultiCheckDropdown";
 import { NewEmailModal } from "@/components/shell/NewEmailModal";
+import { MoreMenu } from "@/components/shell/MoreMenu";
+import { useDialog } from "@/components/shell/dialogs";
+import {
+  POPUP_BTN_CANCEL,
+  POPUP_BTN_PRIMARY,
+  PopupWindow,
+} from "@/components/shell/PopupWindow";
+import {
+  FieldError,
+  FieldLabel,
+  blockIfMissing,
+  inputClass,
+} from "@/components/shell/formFields";
+import {
+  downloadCsvTemplate,
+  ImportCsvModal,
+} from "@/components/shell/ImportCsvModal";
 import { AttachmentsPanel } from "@/components/lead-detail/AttachmentsPanel";
+import {
+  AddCampaignWindow,
+  ScheduleActivityWindow,
+} from "@/components/shell/CompanyAddModals";
 
 type SearchRow = {
   id: string;
@@ -31,6 +52,19 @@ type Props = {
     companyId: string,
     formData: FormData
   ) => Promise<void>;
+  composeEmailAction: (
+    companyId: string,
+    payload: {
+      to: string;
+      cc: string;
+      bcc: string;
+      subject: string;
+      body: string;
+      from?: string;
+    }
+  ) => Promise<void>;
+  addCampaignAction: (companyId: string, formData: FormData) => Promise<void>;
+  createActivityAction: (companyId: string, formData: FormData) => Promise<void>;
 };
 
 const SEARCH_BY = [
@@ -55,8 +89,12 @@ export function ContactsBoard({
   massDeleteAction,
   importCsvAction,
   uploadAttachmentAction,
+  composeEmailAction,
+  addCampaignAction,
+  createActivityAction,
 }: Props) {
   const router = useRouter();
+  const { confirm, alert } = useDialog();
   const [pending, startTransition] = useTransition();
   const [ownerFilter, setOwnerFilter] = useState<string[]>([]);
   const [searches, setSearches] = useState<SearchRow[]>([
@@ -68,21 +106,29 @@ export function ContactsBoard({
   });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
   const [message, setMessage] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
-  const [importBusy, setImportBusy] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [attachFor, setAttachFor] = useState<string | null>(null);
   const [emailOpen, setEmailOpen] = useState<{
     to?: string;
     bcc?: string;
     subject?: string;
+    companyIds: string[];
   } | null>(null);
   const [modal, setModal] = useState<"add" | ContactListRow | null>(null);
+  const [addFor, setAddFor] = useState<{
+    kind: "campaign" | "activity";
+    row: ContactListRow;
+  } | null>(null);
+
+  useEffect(() => {
+    setFieldErrors({});
+  }, [modal]);
 
   const filtered = useMemo(() => {
     return initialRows.filter((row) => {
@@ -153,7 +199,7 @@ export function ContactsBoard({
   function runFind() {
     const missing = searches.some((s) => s.field && !s.value.trim());
     if (missing) {
-      window.alert("Please enter search criteria");
+      void alert("Please enter search criteria");
       return;
     }
     setApplied({
@@ -166,7 +212,7 @@ export function ContactsBoard({
 
   function requireSelection(): string[] | null {
     if (selected.size === 0) {
-      window.alert("Please select Contact(s) to continue");
+      void alert("Please select Contact(s) to continue");
       return null;
     }
     return [...selected];
@@ -260,28 +306,37 @@ export function ContactsBoard({
               if (!ids) return;
               if (action === "Export") exportSelected();
               if (action === "Mass Delete") {
-                const ok = window.confirm(
-                  "The selected Contacts will be permanently deleted. Do you wish to continue?"
-                );
-                if (!ok) return;
-                startTransition(async () => {
-                  try {
-                    await massDeleteAction(ids);
-                    setSelected(new Set());
-                    router.refresh();
-                  } catch (err) {
-                    window.alert(
-                      err instanceof Error ? err.message : "Delete failed"
-                    );
-                  }
-                });
+                void (async () => {
+                  const ok = await confirm(
+                    "The selected Contacts will be permanently deleted. Do you wish to continue?"
+                  );
+                  if (!ok) return;
+                  startTransition(async () => {
+                    try {
+                      await massDeleteAction(ids);
+                      setSelected(new Set());
+                      router.refresh();
+                    } catch (err) {
+                      void alert(
+                        err instanceof Error ? err.message : "Delete failed"
+                      );
+                    }
+                  });
+                })();
               }
               if (action === "Mass Email") {
                 const bcc = initialRows
                   .filter((r) => ids.includes(r.id) && r.email)
                   .map((r) => r.email)
                   .join("; ");
-                setEmailOpen({ bcc, subject: "DALKO MyCRM" });
+                const companyIds = [
+                  ...new Set(
+                    initialRows
+                      .filter((r) => ids.includes(r.id))
+                      .map((r) => r.companyId)
+                  ),
+                ];
+                setEmailOpen({ bcc, subject: "DALKO MyCRM", companyIds });
               }
             }}
           >
@@ -452,8 +507,8 @@ export function ContactsBoard({
               );
               const moreItems: Array<{ label: string; run: () => void }> = [
                 {
-                  label: "Add Campaign",
-                  run: () => router.push("/campaigns"),
+                    label: "Add Campaign",
+                    run: () => setAddFor({ kind: "campaign", row }),
                 },
                 {
                   label: "Add Document",
@@ -463,7 +518,7 @@ export function ContactsBoard({
                   label: "Delete",
                   run: () => {
                     void (async () => {
-                      const ok = window.confirm(
+                      const ok = await confirm(
                         "The selected Contact(s) will be permanently deleted. Do you wish to continue?"
                       );
                       if (!ok) return;
@@ -477,11 +532,8 @@ export function ContactsBoard({
                   run: () => setModal(row),
                 },
                 {
-                  label: "Schedule Activity",
-                  run: () =>
-                    setMessage(
-                      "Schedule Activity — reserved until Activities section is built."
-                    ),
+                    label: "Schedule Activity",
+                    run: () => setAddFor({ kind: "activity", row }),
                 },
                 {
                   label: "Send Email",
@@ -489,6 +541,7 @@ export function ContactsBoard({
                     setEmailOpen({
                       to: row.email || "",
                       subject: row.companyName,
+                      companyIds: [row.companyId],
                     }),
                 },
               ].sort((a, b) => a.label.localeCompare(b.label));
@@ -508,34 +561,15 @@ export function ContactsBoard({
                         }}
                       />
                     </td>
-                    <td className="relative px-2 py-2">
-                      <button
-                        type="button"
+                    <td className="px-2 py-2">
+                      <MoreMenu
                         title="More Options"
-                        className="rounded px-2 hover:bg-black/5"
-                        onClick={() =>
-                          setOpenMenu((id) => (id === row.id ? null : row.id))
-                        }
-                      >
-                        ⋯
-                      </button>
-                      {openMenu === row.id ? (
-                        <div className="absolute left-0 z-30 mt-1 min-w-[180px] rounded border border-[var(--color-table-line)]/30 bg-white py-1 text-left shadow-sm">
-                          {moreItems.map((item) => (
-                            <button
-                              key={item.label}
-                              type="button"
-                              className="block w-full px-3 py-1.5 text-left hover:bg-black/5"
-                              onClick={() => {
-                                setOpenMenu(null);
-                                item.run();
-                              }}
-                            >
-                              {item.label}
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
+                        items={moreItems.map((item) => ({
+                          label: item.label,
+                          onClick: item.run,
+                          danger: item.label === "Delete",
+                        }))}
+                      />
                     </td>
                     <td className="px-3 py-2">
                       <button
@@ -706,33 +740,51 @@ export function ContactsBoard({
       </div>
 
       {modal ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded border border-[var(--color-blue)]/30 bg-white p-4 shadow-lg">
-            <div className="mb-3 flex items-center justify-between">
-              <h2
-                className="text-sm font-bold text-[var(--color-blue)]"
-                style={{ fontFamily: "var(--font-heading)" }}
+        <PopupWindow
+          title={modal === "add" ? "New Contact" : "Edit/View Contact"}
+          onClose={() => setModal(null)}
+          footer={
+            <>
+              <button
+                type="button"
+                className={POPUP_BTN_CANCEL}
+                onClick={() => setModal(null)}
               >
-                {modal === "add" ? "New Contact" : "Edit/View Contact"}
-              </h2>
-              <button type="button" onClick={() => setModal(null)}>
-                ×
+                Cancel
               </button>
-            </div>
+              <button
+                type="submit"
+                form="contact-board-form"
+                className={POPUP_BTN_PRIMARY}
+              >
+                Save
+              </button>
+            </>
+          }
+        >
             <form
+              id="contact-board-form"
               className="space-y-3"
+              noValidate
+              onSubmit={(e) =>
+                blockIfMissing(
+                  e,
+                  [
+                    ["companyId", "Company"],
+                    ["name", "Name"],
+                  ],
+                  setFieldErrors
+                )
+              }
               action={async (fd) => {
                 await saveModal(fd);
               }}
             >
               <label className="block text-sm">
-                <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
-                  Company
-                </span>
+                <FieldLabel required>Company</FieldLabel>
                 <select
                   name="companyId"
-                  required
-                  className="w-full rounded border border-[var(--color-blue)]/25 px-2 py-1.5 text-sm"
+                  className={inputClass(fieldErrors.companyId)}
                   defaultValue={modal === "add" ? "" : modal.companyId}
                 >
                   <option value=""></option>
@@ -742,6 +794,7 @@ export function ContactsBoard({
                     </option>
                   ))}
                 </select>
+                <FieldError error={fieldErrors.companyId} />
               </label>
               {(
                 [
@@ -774,16 +827,14 @@ export function ContactsBoard({
                 ] as const
               ).map(([name, label, value, required]) => (
                 <label key={name} className="block text-sm">
-                  <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
-                    {label}
-                  </span>
+                  <FieldLabel required={required}>{label}</FieldLabel>
                   <input
                     name={name}
-                    required={required}
                     defaultValue={value}
-                    className={`w-full rounded border border-[var(--color-blue)]/25 px-2 py-1.5 text-sm ${
+                    className={inputClass(
+                      fieldErrors[name],
                       name === "email" ? "normal-case" : "uppercase"
-                    }`}
+                    )}
                     onBlur={(e) => {
                       if (name === "email") return;
                       if (name === "phone" || name === "mobile") {
@@ -795,6 +846,7 @@ export function ContactsBoard({
                       }
                     }}
                   />
+                  <FieldError error={fieldErrors[name]} />
                 </label>
               ))}
               <label className="flex items-center gap-2 text-sm text-[var(--color-blue)]">
@@ -805,87 +857,50 @@ export function ContactsBoard({
                 />
                 Primary Contact
               </label>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  className="h-9 rounded border px-3 text-sm"
-                  onClick={() => setModal(null)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="h-9 rounded bg-[var(--color-gold)] px-3 text-sm font-bold text-[var(--color-blue)]"
-                >
-                  Save
-                </button>
-              </div>
             </form>
-          </div>
-        </div>
+        </PopupWindow>
       ) : null}
 
-      {importOpen ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded border border-[var(--color-blue)]/30 bg-white p-4 shadow-lg">
-            <div className="mb-3 flex items-center justify-between">
-              <h2
-                className="text-sm font-bold text-[var(--color-blue)]"
-                style={{ fontFamily: "var(--font-heading)" }}
-              >
-                Import Contacts
-              </h2>
-              <button type="button" onClick={() => setImportOpen(false)}>
-                ×
-              </button>
-            </div>
-            <p className="mb-3 text-xs text-[var(--color-table-line)]">
-              CSV headers: Name, Company, Email, Phone, Mobile, Owner, Title,
-              Primary Contact. Company must match an existing company name.
-            </p>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const fd = new FormData(e.currentTarget);
-                setImportBusy(true);
-                startTransition(async () => {
-                  try {
-                    const result = await importCsvAction(fd);
-                    setImportOpen(false);
-                    setMessage(`Imported ${result.created} contact(s).`);
-                    router.refresh();
-                  } catch (err) {
-                    window.alert(
-                      err instanceof Error ? err.message : "Import failed"
-                    );
-                  } finally {
-                    setImportBusy(false);
-                  }
-                });
-              }}
-              className="space-y-3"
-            >
-              <input type="file" name="file" accept=".csv,text/csv" required />
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  className="h-9 rounded border px-3 text-sm"
-                  onClick={() => setImportOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={importBusy}
-                  className="h-9 rounded bg-[var(--color-blue)] px-3 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  Import
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : null}
+      <ImportCsvModal
+        open={importOpen}
+        title="Import Contacts"
+        hint="Download the template, fill in your rows, then upload the CSV. Name and Company are required. Company must match an existing company name. Leave Owner blank to use your signed-in name."
+        downloadLabel="Download Contacts template"
+        onDownloadTemplate={() =>
+          downloadCsvTemplate(
+            "mycrm-contact-import-template.csv",
+            [
+              "Name",
+              "Company",
+              "Email",
+              "Phone",
+              "Mobile",
+              "Owner",
+              "Title",
+              "Primary Contact",
+            ],
+            [
+              "JANE DOE",
+              "EXAMPLE LOGISTICS LLC",
+              "jane@example.com",
+              "(412) 555-0100",
+              "(412) 555-0101",
+              "",
+              "PURCHASING MANAGER",
+              "Y",
+            ]
+          )
+        }
+        onClose={() => setImportOpen(false)}
+        onImport={async (file) => {
+          const fd = new FormData();
+          fd.set("file", file);
+          const result = await importCsvAction(fd);
+          setImportOpen(false);
+          setMessage(`Imported ${result.created} contact(s).`);
+          router.refresh();
+        }}
+      />
 
       {emailOpen ? (
         <NewEmailModal
@@ -894,7 +909,35 @@ export function ContactsBoard({
           to={emailOpen.to}
           bcc={emailOpen.bcc}
           subject={emailOpen.subject}
+          defaultCompanyId={
+            emailOpen.companyIds.length === 1 ? emailOpen.companyIds[0] : undefined
+          }
           onClose={() => setEmailOpen(null)}
+          onSend={async (payload) => {
+            for (const companyId of emailOpen.companyIds) {
+              await composeEmailAction(companyId, payload);
+            }
+            router.refresh();
+          }}
+        />
+      ) : null}
+
+      {addFor?.kind === "campaign" ? (
+        <AddCampaignWindow
+          companyId={addFor.row.companyId}
+          companyName={addFor.row.companyName}
+          onClose={() => setAddFor(null)}
+          onSaved={() => router.refresh()}
+          onAdd={(fd) => addCampaignAction(addFor.row.companyId, fd)}
+        />
+      ) : null}
+      {addFor?.kind === "activity" ? (
+        <ScheduleActivityWindow
+          companyId={addFor.row.companyId}
+          companyName={addFor.row.companyName}
+          onClose={() => setAddFor(null)}
+          onSaved={() => router.refresh()}
+          onAdd={(fd) => createActivityAction(addFor.row.companyId, fd)}
         />
       ) : null}
     </div>

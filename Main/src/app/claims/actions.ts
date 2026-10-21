@@ -8,7 +8,16 @@ import {
   updateClaim,
 } from "@/data/claims";
 import { getCompany } from "@/data/companies";
-import { addChangeLog } from "@/data/changeLogs";
+import { getActor, logChange } from "@/lib/actor";
+import { isClientStatus } from "@/domain/status";
+
+function assertClientCompany(companyId: string) {
+  const company = getCompany(companyId);
+  if (!company) throw new Error("Company not found");
+  if (!isClientStatus(company.status)) {
+    throw new Error("Claims can only be added to Clients");
+  }
+}
 
 function revalidateClaims(companyId?: string) {
   revalidatePath("/claims");
@@ -29,14 +38,16 @@ export async function createGlobalClaimAction(formData: FormData) {
   if (!companyId) throw new Error("Company is required");
   if (!type) throw new Error("Type is required");
   if (!topic) throw new Error("Topic is required");
-  if (!getCompany(companyId)) throw new Error("Company not found");
+  assertClientCompany(companyId);
 
+  const actor = await getActor();
   createClaim(companyId, {
     type,
     topic,
     loadNo: String(formData.get("loadNo") ?? ""),
+    actorName: actor.fullName,
   });
-  addChangeLog(companyId, `Claim added: ${type} / ${topic}`);
+  await logChange(companyId, `Claim added: ${type} / ${topic}`);
   revalidateClaims(companyId);
 }
 
@@ -54,15 +65,17 @@ export async function updateGlobalClaimAction(
   if (!companyId) throw new Error("Company is required");
   if (!type) throw new Error("Type is required");
   if (!topic) throw new Error("Topic is required");
-  if (!getCompany(companyId)) throw new Error("Company not found");
+  assertClientCompany(companyId);
 
+  const actor = await getActor();
   updateClaim(claimId, {
     companyId,
     type,
     topic,
     loadNo: String(formData.get("loadNo") ?? ""),
+    actorName: actor.fullName,
   });
-  addChangeLog(companyId, `Claim updated: ${type} / ${topic}`);
+  await logChange(companyId, `Claim updated: ${type} / ${topic}`);
   revalidateClaims(companyId);
   if (companyId !== existing.companyId) {
     revalidateClaims(existing.companyId);
@@ -73,7 +86,7 @@ export async function deleteGlobalClaimAction(claimId: string) {
   const existing = getClaim(claimId);
   if (!existing) return;
   deleteClaim(claimId);
-  addChangeLog(existing.companyId, "Claim deleted");
+  await logChange(existing.companyId, "Claim deleted");
   revalidateClaims(existing.companyId);
 }
 
@@ -82,7 +95,7 @@ export async function massDeleteClaimsAction(ids: string[]) {
     const existing = getClaim(id);
     if (!existing) continue;
     deleteClaim(id);
-    addChangeLog(existing.companyId, "Claim deleted");
+    await logChange(existing.companyId, "Claim deleted");
   }
   revalidateClaims();
 }

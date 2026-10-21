@@ -9,8 +9,7 @@ import {
 } from "@/data/contacts";
 import { getCompany } from "@/data/companies";
 import { getDb } from "@/lib/db";
-import { addChangeLog } from "@/data/changeLogs";
-import { DEMO_USER } from "@/lib/paths";
+import { getActor, logChange } from "@/lib/actor";
 
 function revalidateContacts(companyId?: string) {
   revalidatePath("/contacts");
@@ -47,10 +46,11 @@ export async function createGlobalContactAction(formData: FormData) {
     phone: String(formData.get("phone") ?? ""),
     mobile: String(formData.get("mobile") ?? ""),
     contactOwner:
-      String(formData.get("contactOwner") ?? "").trim() || DEMO_USER.fullName,
+      String(formData.get("contactOwner") ?? "").trim() ||
+      (await getActor()).fullName,
     isPrimary: formData.get("isPrimary") === "on",
   });
-  addChangeLog(companyId, `Contact added: ${name.toUpperCase()}`);
+  await logChange(companyId, `Contact added: ${name.toUpperCase()}`);
   revalidateContacts(companyId);
 }
 
@@ -74,10 +74,11 @@ export async function updateGlobalContactAction(
     phone: String(formData.get("phone") ?? ""),
     mobile: String(formData.get("mobile") ?? ""),
     contactOwner:
-      String(formData.get("contactOwner") ?? "").trim() || DEMO_USER.fullName,
+      String(formData.get("contactOwner") ?? "").trim() ||
+      (await getActor()).fullName,
     isPrimary: formData.get("isPrimary") === "on",
   });
-  addChangeLog(companyId, `Contact updated: ${name.toUpperCase()}`);
+  await logChange(companyId, `Contact updated: ${name.toUpperCase()}`);
   revalidateContacts(companyId);
   if (companyId !== existing.companyId) {
     revalidateContacts(existing.companyId);
@@ -88,7 +89,7 @@ export async function deleteGlobalContactAction(contactId: string) {
   const existing = getContact(contactId);
   if (!existing) return;
   deleteContact(contactId);
-  addChangeLog(existing.companyId, "Contact deleted");
+  await logChange(existing.companyId, "Contact deleted");
   revalidateContacts(existing.companyId);
 }
 
@@ -97,7 +98,7 @@ export async function massDeleteContactsAction(ids: string[]) {
     const existing = getContact(id);
     if (!existing) continue;
     deleteContact(id);
-    addChangeLog(existing.companyId, "Contact deleted");
+    await logChange(existing.companyId, "Contact deleted");
   }
   revalidateContacts();
 }
@@ -157,7 +158,8 @@ export async function importContactsCsvAction(formData: FormData) {
       email: get("email") || get("primary email"),
       phone: get("phone") || get("office phone"),
       mobile: get("mobile"),
-      contactOwner: get("owner") || get("contact owner") || DEMO_USER.fullName,
+      contactOwner:
+        get("owner") || get("contact owner") || (await getActor()).fullName,
       isPrimary: /^(y|yes|1|true|✓)$/i.test(primaryRaw.trim()),
     });
     created++;

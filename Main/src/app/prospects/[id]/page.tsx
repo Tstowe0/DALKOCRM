@@ -37,7 +37,7 @@ import {
   uploadLogoAction,
 } from "@/app/leads/actions";
 import {
-  convertProspectToClientAction,
+  convertProspectToClientAndOpenAction,
   deleteProspectAction,
   saveNewProspectAction,
   saveProspectFieldAction,
@@ -98,7 +98,10 @@ export default async function ProspectDetailPage({
       renameAttachmentAction={renameAttachmentAction.bind(null, id)}
       deleteAttachmentAction={deleteAttachmentAction.bind(null, id)}
       uploadLogoAction={uploadLogoAction.bind(null, id)}
-      convertToClientAction={convertProspectToClientAction.bind(null, id)}
+      convertToClientAction={convertProspectToClientAndOpenAction.bind(
+        null,
+        id
+      )}
       deleteAction={deleteProspectAction.bind(null, id)}
       composeEmailAction={composeEmailAction.bind(null, id)}
       uploadEmailAction={uploadEmailAction.bind(null, id)}

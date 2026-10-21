@@ -9,7 +9,7 @@ import {
   updateCompanyField,
   type CompanyInput,
 } from "@/data/companies";
-import { DEMO_USER } from "@/lib/paths";
+import { getActor } from "@/lib/actor";
 import { parseCurrency } from "@/domain/formatting";
 import { isClientStatus, normalizeTmsStatus } from "@/domain/status";
 
@@ -34,7 +34,7 @@ function formToCompanyInput(formData: FormData): CompanyInput {
     ...emptyCompanyInput(),
     companyName: String(formData.get("companyName") ?? ""),
     status: "Client",
-    tmsStatus: normalizeTmsStatus(String(formData.get("tmsStatus") ?? "Active")),
+    tmsStatus: String(formData.get("tmsStatus") ?? ""),
     leadSource: String(formData.get("leadSource") ?? ""),
     clientType: String(formData.get("clientType") ?? ""),
     parentAccountId: String(formData.get("parentAccountId") ?? "") || null,
@@ -75,6 +75,9 @@ export async function saveNewClientAction(formData: FormData) {
     input.physicalState = input.mailingState;
     input.physicalPostal = input.mailingPostal;
   }
+  if (!input.salesperson.trim()) {
+    input.salesperson = (await getActor()).fullName;
+  }
   const company = createCompany(input);
   revalidateClient(company.id);
   redirect(`/clients/${company.id}`);
@@ -99,7 +102,8 @@ export async function saveClientFieldAction(
   if (field === "industry" && typeof value === "string") {
     next = value ? value.split("|").filter(Boolean) : [];
   }
-  updateCompanyField(id, field, next);
+  const actor = await getActor();
+  updateCompanyField(id, field, next, actor.fullName);
   revalidateClient(id);
 }
 
@@ -196,7 +200,7 @@ export async function importClientsCsvAction(formData: FormData) {
       website: get("website"),
       linkedin: get("linked inn") || get("linkedin"),
       salesTerritory: get("sales territory"),
-      salesperson: get("salesperson") || DEMO_USER.fullName,
+      salesperson: get("salesperson") || (await getActor()).fullName,
       office: get("office"),
       lastContact: get("last contacted") || get("last contact"),
       mailingCountry:

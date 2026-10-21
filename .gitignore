@@ -13,6 +13,8 @@ Main/*.sqlite-*
 
 # Environment and secrets
 .env*
+!.env.example
+!Main/.env.example
 *.pem
 
 # Logs and debug

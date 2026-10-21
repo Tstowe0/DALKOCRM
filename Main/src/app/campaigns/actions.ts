@@ -9,7 +9,7 @@ import {
 } from "@/data/campaigns";
 import { getCompany } from "@/data/companies";
 import { getDb } from "@/lib/db";
-import { addChangeLog } from "@/data/changeLogs";
+import { logChange } from "@/lib/actor";
 
 function revalidateCampaigns(companyId?: string) {
   revalidatePath("/campaigns");
@@ -43,7 +43,7 @@ export async function createGlobalCampaignAction(formData: FormData) {
     campaignName,
     templateName: String(formData.get("templateName") ?? ""),
   });
-  addChangeLog(companyId, `Campaign added: ${campaignName.toUpperCase()}`);
+  await logChange(companyId, `Campaign added: ${campaignName.toUpperCase()}`);
   revalidateCampaigns(companyId);
 }
 
@@ -66,7 +66,7 @@ export async function updateGlobalCampaignAction(
     campaignName,
     templateName: String(formData.get("templateName") ?? ""),
   });
-  addChangeLog(companyId, `Campaign updated: ${campaignName.toUpperCase()}`);
+  await logChange(companyId, `Campaign updated: ${campaignName.toUpperCase()}`);
   revalidateCampaigns(companyId);
   if (companyId !== existing.companyId) {
     revalidateCampaigns(existing.companyId);
@@ -77,7 +77,7 @@ export async function deleteGlobalCampaignAction(campaignId: string) {
   const existing = getCampaign(campaignId);
   if (!existing) return;
   deleteCampaign(campaignId);
-  addChangeLog(existing.companyId, "Campaign removed");
+  await logChange(existing.companyId, "Campaign removed");
   revalidateCampaigns(existing.companyId);
 }
 
@@ -86,7 +86,7 @@ export async function massDeleteCampaignsAction(ids: string[]) {
     const existing = getCampaign(id);
     if (!existing) continue;
     deleteCampaign(id);
-    addChangeLog(existing.companyId, "Campaign removed");
+    await logChange(existing.companyId, "Campaign removed");
   }
   revalidateCampaigns();
 }

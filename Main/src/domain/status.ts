@@ -54,9 +54,23 @@ export const TMS_STATUSES = ["Active", "Deactivated"] as const;
 
 export type TmsStatus = (typeof TMS_STATUSES)[number];
 
+export function parseTmsStatus(
+  value: string | null | undefined
+): TmsStatus | null {
+  return value === "Active" || value === "Deactivated" ? value : null;
+}
+
+export function requireTmsStatus(
+  value: string | null | undefined
+): TmsStatus {
+  const parsed = parseTmsStatus(value);
+  if (!parsed) throw new Error("TMS Status is required");
+  return parsed;
+}
+
+/** Display / filter helper. Empty stored values count as Active. */
 export function normalizeTmsStatus(value: string | null | undefined): TmsStatus {
-  if (value === "Deactivated") return "Deactivated";
-  return "Active";
+  return parseTmsStatus(value) ?? "Active";
 }
 
 /** Route to the correct company detail based on pipeline status */

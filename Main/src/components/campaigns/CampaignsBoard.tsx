@@ -1,11 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useMemo, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { CampaignListRow } from "@/data/campaigns";
 import { companyDetailHref } from "@/domain/status";
 import { toAllCaps } from "@/domain/formatting";
+import { MoreMenu } from "@/components/shell/MoreMenu";
+import { useDialog } from "@/components/shell/dialogs";
+import {
+  POPUP_BTN_CANCEL,
+  POPUP_BTN_PRIMARY,
+  PopupWindow,
+} from "@/components/shell/PopupWindow";
+import {
+  FieldError,
+  FieldLabel,
+  blockIfMissing,
+  inputClass,
+} from "@/components/shell/formFields";
+import {
+  downloadCsvTemplate,
+  ImportCsvModal,
+} from "@/components/shell/ImportCsvModal";
 
 type SearchRow = {
   id: string;
@@ -40,6 +57,7 @@ export function CampaignsBoard({
   importCsvAction,
 }: Props) {
   const router = useRouter();
+  const { confirm, alert } = useDialog();
   const [pending, startTransition] = useTransition();
   const [searches, setSearches] = useState<SearchRow[]>([
     { id: "s1", field: "Campaign Name", value: "" },
@@ -48,16 +66,19 @@ export function CampaignsBoard({
     searches: [{ id: "s1", field: "Campaign Name", value: "" }] as SearchRow[],
   });
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState("campaignName");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
   const [message, setMessage] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
-  const [importBusy, setImportBusy] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [modal, setModal] = useState<"add" | CampaignListRow | null>(null);
   const [viewOnly, setViewOnly] = useState(false);
+
+  useEffect(() => {
+    setFieldErrors({});
+  }, [modal]);
 
   const filtered = useMemo(() => {
     return initialRows.filter((row) => {
@@ -110,7 +131,7 @@ export function CampaignsBoard({
   function runFind() {
     const missing = searches.some((s) => s.field && !s.value.trim());
     if (missing) {
-      window.alert("Please enter search criteria");
+      void alert("Please enter search criteria");
       return;
     }
     setApplied({ searches: searches.map((s) => ({ ...s })) });
@@ -120,7 +141,7 @@ export function CampaignsBoard({
 
   function requireSelection(): string[] | null {
     if (selected.size === 0) {
-      window.alert("Please select Campaign(s) to continue");
+      void alert("Please select Campaign(s) to continue");
       return null;
     }
     return [...selected];
@@ -202,15 +223,17 @@ export function CampaignsBoard({
               if (!ids) return;
               if (action === "Export") exportSelected();
               if (action === "Mass Delete") {
-                const ok = window.confirm(
-                  "The selected Campaigns will be permanently deleted. Do you wish to continue?"
-                );
-                if (!ok) return;
-                startTransition(async () => {
-                  await massDeleteAction(ids);
-                  setSelected(new Set());
-                  router.refresh();
-                });
+                void (async () => {
+                  const ok = await confirm(
+                    "The selected Campaigns will be permanently deleted. Do you wish to continue?"
+                  );
+                  if (!ok) return;
+                  startTransition(async () => {
+                    await massDeleteAction(ids);
+                    setSelected(new Set());
+                    router.refresh();
+                  });
+                })();
               }
             }}
           >
@@ -357,7 +380,7 @@ export function CampaignsBoard({
                   label: "Remove",
                   run: () => {
                     void (async () => {
-                      const ok = window.confirm(
+                      const ok = await confirm(
                         "The selected Campaign will be permanently deleted. Do you wish to continue?"
                       );
                       if (!ok) return;
@@ -390,34 +413,15 @@ export function CampaignsBoard({
                         }}
                       />
                     </td>
-                    <td className="relative px-2 py-2">
-                      <button
-                        type="button"
+                    <td className="px-2 py-2">
+                      <MoreMenu
                         title="More Options"
-                        className="rounded px-2 hover:bg-black/5"
-                        onClick={() =>
-                          setOpenMenu((id) => (id === row.id ? null : row.id))
-                        }
-                      >
-                        ⋯
-                      </button>
-                      {openMenu === row.id ? (
-                        <div className="absolute left-0 z-30 mt-1 min-w-[160px] rounded border border-[var(--color-table-line)]/30 bg-white py-1 text-left shadow-sm">
-                          {moreItems.map((item) => (
-                            <button
-                              key={item.label}
-                              type="button"
-                              className="block w-full px-3 py-1.5 text-left hover:bg-black/5"
-                              onClick={() => {
-                                setOpenMenu(null);
-                                item.run();
-                              }}
-                            >
-                              {item.label}
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
+                        items={moreItems.map((item) => ({
+                          label: item.label,
+                          onClick: item.run,
+                          danger: item.label === "Delete",
+                        }))}
+                      />
                     </td>
                     <td className="px-3 py-2 font-semibold text-[var(--color-blue)]">
                       <button
@@ -526,29 +530,54 @@ export function CampaignsBoard({
       </div>
 
       {modal ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded border border-[var(--color-blue)]/30 bg-white p-4 shadow-lg">
-            <div className="mb-3 flex items-center justify-between">
-              <h2
-                className="text-sm font-bold text-[var(--color-blue)]"
-                style={{ fontFamily: "var(--font-heading)" }}
-              >
-                {modal === "add"
-                  ? "Add Campaign"
-                  : viewOnly
-                    ? "View Campaign"
-                    : "Edit Campaign"}
-              </h2>
+        <PopupWindow
+          title={
+            modal === "add"
+              ? "Add Campaign"
+              : viewOnly
+                ? "View Campaign"
+                : "Edit Campaign"
+          }
+          maxWidthClass="max-w-md"
+          onClose={() => {
+            setModal(null);
+            setViewOnly(false);
+          }}
+          footer={
+            viewOnly && modal !== "add" ? (
               <button
                 type="button"
+                className={POPUP_BTN_CANCEL}
                 onClick={() => {
                   setModal(null);
                   setViewOnly(false);
                 }}
               >
-                ×
+                Close
               </button>
-            </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className={POPUP_BTN_CANCEL}
+                  onClick={() => {
+                    setModal(null);
+                    setViewOnly(false);
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  form="campaign-board-form"
+                  className={POPUP_BTN_PRIMARY}
+                >
+                  Save
+                </button>
+              </>
+            )
+          }
+        >
             {viewOnly && modal !== "add" ? (
               <div className="space-y-2 text-sm text-[var(--color-blue)]">
                 <p>
@@ -572,34 +601,31 @@ export function CampaignsBoard({
                   <br />
                   {modal.companyName}
                 </p>
-                <div className="flex justify-end pt-2">
-                  <button
-                    type="button"
-                    className="h-9 rounded border px-3 text-sm"
-                    onClick={() => {
-                      setModal(null);
-                      setViewOnly(false);
-                    }}
-                  >
-                    Close
-                  </button>
-                </div>
               </div>
             ) : (
               <form
+                id="campaign-board-form"
                 className="space-y-3"
+                noValidate
+                onSubmit={(e) =>
+                  blockIfMissing(
+                    e,
+                    [
+                      ["companyId", "Company"],
+                      ["campaignName", "Campaign Name"],
+                    ],
+                    setFieldErrors
+                  )
+                }
                 action={async (fd) => {
                   await saveModal(fd);
                 }}
               >
                 <label className="block text-sm">
-                  <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
-                    Company
-                  </span>
+                  <FieldLabel required>Company</FieldLabel>
                   <select
                     name="companyId"
-                    required
-                    className="w-full rounded border border-[var(--color-blue)]/25 px-2 py-1.5 text-sm"
+                    className={inputClass(fieldErrors.companyId)}
                     defaultValue={modal === "add" ? "" : modal.companyId}
                   >
                     <option value=""></option>
@@ -609,119 +635,58 @@ export function CampaignsBoard({
                       </option>
                     ))}
                   </select>
+                  <FieldError error={fieldErrors.companyId} />
                 </label>
                 <label className="block text-sm">
-                  <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
-                    Campaign Name
-                  </span>
+                  <FieldLabel required>Campaign Name</FieldLabel>
                   <input
                     name="campaignName"
-                    required
                     defaultValue={modal === "add" ? "" : modal.campaignName}
-                    className="w-full rounded border border-[var(--color-blue)]/25 px-2 py-1.5 text-sm uppercase"
+                    className={inputClass(fieldErrors.campaignName, "uppercase")}
                     onBlur={(e) => {
                       e.currentTarget.value = toAllCaps(e.currentTarget.value);
                     }}
                   />
+                  <FieldError error={fieldErrors.campaignName} />
                 </label>
                 <label className="block text-sm">
-                  <span className="mb-0.5 block text-[11px] font-semibold uppercase text-[var(--color-blue)]/75">
-                    Template Name
-                  </span>
+                  <FieldLabel>Template Name</FieldLabel>
                   <input
                     name="templateName"
                     defaultValue={modal === "add" ? "" : modal.templateName}
-                    className="w-full rounded border border-[var(--color-blue)]/25 px-2 py-1.5 text-sm uppercase"
+                    className={inputClass(undefined, "uppercase")}
                     onBlur={(e) => {
                       e.currentTarget.value = toAllCaps(e.currentTarget.value);
                     }}
                   />
                 </label>
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    className="h-9 rounded border px-3 text-sm"
-                    onClick={() => {
-                      setModal(null);
-                      setViewOnly(false);
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="h-9 rounded bg-[var(--color-gold)] px-3 text-sm font-bold text-[var(--color-blue)]"
-                  >
-                    Save
-                  </button>
-                </div>
               </form>
             )}
-          </div>
-        </div>
+        </PopupWindow>
       ) : null}
 
-      {importOpen ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded border border-[var(--color-blue)]/30 bg-white p-4 shadow-lg">
-            <div className="mb-3 flex items-center justify-between">
-              <h2
-                className="text-sm font-bold text-[var(--color-blue)]"
-                style={{ fontFamily: "var(--font-heading)" }}
-              >
-                Import Campaigns
-              </h2>
-              <button type="button" onClick={() => setImportOpen(false)}>
-                ×
-              </button>
-            </div>
-            <p className="mb-3 text-xs text-[var(--color-table-line)]">
-              CSV headers: Campaign Name, Template Name, Company. Company must
-              match an existing company name.
-            </p>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const fd = new FormData(e.currentTarget);
-                setImportBusy(true);
-                startTransition(async () => {
-                  try {
-                    const result = await importCsvAction(fd);
-                    setImportOpen(false);
-                    setMessage(`Imported ${result.created} campaign(s).`);
-                    router.refresh();
-                  } catch (err) {
-                    window.alert(
-                      err instanceof Error ? err.message : "Import failed"
-                    );
-                  } finally {
-                    setImportBusy(false);
-                  }
-                });
-              }}
-              className="space-y-3"
-            >
-              <input type="file" name="file" accept=".csv,text/csv" required />
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  className="h-9 rounded border px-3 text-sm"
-                  onClick={() => setImportOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={importBusy}
-                  className="h-9 rounded bg-[var(--color-blue)] px-3 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  Import
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : null}
+      <ImportCsvModal
+        open={importOpen}
+        title="Import Campaigns"
+        hint="Download the template, fill in your rows, then upload the CSV. Campaign Name and Company are required. Company must match an existing company name."
+        downloadLabel="Download Campaigns template"
+        onDownloadTemplate={() =>
+          downloadCsvTemplate(
+            "mycrm-campaign-import-template.csv",
+            ["Campaign Name", "Template Name", "Company"],
+            ["Q1 OUTREACH", "INTRO EMAIL", "EXAMPLE LOGISTICS LLC"]
+          )
+        }
+        onClose={() => setImportOpen(false)}
+        onImport={async (file) => {
+          const fd = new FormData();
+          fd.set("file", file);
+          const result = await importCsvAction(fd);
+          setImportOpen(false);
+          setMessage(`Imported ${result.created} campaign(s).`);
+          router.refresh();
+        }}
+      />
     </div>
   );
 }

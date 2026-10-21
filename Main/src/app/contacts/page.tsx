@@ -1,7 +1,12 @@
 import { ContactsBoard } from "@/components/contacts/ContactsBoard";
 import { listAllContactRows, listContactOwners } from "@/data/contacts";
 import { getDb } from "@/lib/db";
-import { uploadAttachmentAction } from "@/app/leads/actions";
+import {
+  addCampaignAction,
+  composeEmailAction,
+  createActivityAction,
+  uploadAttachmentAction,
+} from "@/app/leads/actions";
 import {
   createGlobalContactAction,
   deleteGlobalContactAction,
@@ -41,6 +46,9 @@ export default function ContactsPage() {
       massDeleteAction={massDeleteContactsAction}
       importCsvAction={importContactsCsvAction}
       uploadAttachmentAction={uploadAttachmentAction}
+      composeEmailAction={composeEmailAction}
+      addCampaignAction={addCampaignAction}
+      createActivityAction={createActivityAction}
     />
   );
 }

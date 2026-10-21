@@ -4,13 +4,15 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { UserMenu } from "@/components/shell/UserMenu";
 
-/** Primary link bar — labels/order from Appearance written spec */
+/** Primary link bar — Dashboard first; remaining labels/order from Appearance */
 const PRIMARY_NAV: Array<{
   href: string;
   label: string;
   enabled: boolean;
 }> = [
+  { href: "/dashboard", label: "Dashboard", enabled: true },
   { href: "/leads", label: "Leads", enabled: true },
   { href: "/prospects", label: "Prospects", enabled: true },
   { href: "/clients", label: "Clients", enabled: true },
@@ -18,29 +20,6 @@ const PRIMARY_NAV: Array<{
   { href: "/campaigns", label: "Campaigns", enabled: true },
   { href: "/claims", label: "Claims", enabled: true },
 ];
-
-/** Moved under More per Appearance spec */
-const MORE_NAV = [
-  { href: "/enquiry", label: "Enquiry" },
-  { href: "/feeds", label: "Feeds" },
-  { href: "/survey", label: "Survey" },
-] as const;
-
-function MoreIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 18 18"
-      aria-hidden="true"
-      className="fill-current"
-    >
-      <circle cx="3" cy="9" r="1.6" />
-      <circle cx="9" cy="9" r="1.6" />
-      <circle cx="15" cy="9" r="1.6" />
-    </svg>
-  );
-}
 
 export function TopBar() {
   return (
@@ -61,11 +40,10 @@ export function TopBar() {
         </span>
       </div>
 
-      {/* Spec: logo center-aligned. Logo1 has a black plate — lighten blend
-          drops the black against the navy bar so the globe/wordmark read cleanly. */}
+      {/* Centered wordmark. Transparent PNG sits cleanly on the navy bar. */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <Image
-          src="/brand/Logo1.png"
+          src="/brand/Logo1-transparent.png"
           alt="DALKO Resources"
           width={260}
           height={64}
@@ -76,26 +54,28 @@ export function TopBar() {
 
       {/* Spec: username not shown; hover text = user name. Mockup = white circle. */}
       <div className="z-10 ml-auto shrink-0">
-        <button
-          type="button"
-          title="DEMO SALESPERSON"
-          className="h-10 w-10 rounded-full bg-white shadow-sm"
-          style={{ fontFamily: "var(--font-heading)" }}
-          aria-label="User menu"
-        />
+        <UserMenu />
       </div>
     </header>
   );
 }
 
-export function NavBar() {
+const SITE_NAV = [
+  { href: "/permissions", label: "Site Permissions" },
+  { href: "/settings", label: "Site Settings" },
+] as const;
+
+export function NavBar({ isAdmin = false }: { isAdmin?: boolean }) {
   const pathname = usePathname();
-  const [moreOpen, setMoreOpen] = useState(false);
-  const moreRef = useRef<HTMLDivElement>(null);
+  const [siteOpen, setSiteOpen] = useState(false);
+  const siteRef = useRef<HTMLDivElement>(null);
+  const siteActive = SITE_NAV.some(
+    (item) => pathname === item.href || pathname.startsWith(`${item.href}/`)
+  );
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
-      if (!moreRef.current?.contains(e.target as Node)) setMoreOpen(false);
+      if (!siteRef.current?.contains(e.target as Node)) setSiteOpen(false);
     }
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
@@ -140,42 +120,60 @@ export function NavBar() {
         })}
       </div>
 
-      <div className="relative flex items-center" ref={moreRef}>
-        <button
-          type="button"
-          title="More Options"
-          aria-label="More Options"
-          aria-expanded={moreOpen}
-          className="flex h-9 w-9 items-center justify-center rounded text-[var(--color-blue)] hover:bg-black/5"
-          onClick={() => setMoreOpen((v) => !v)}
-        >
-          <MoreIcon />
-        </button>
-        {moreOpen ? (
-          <div className="absolute right-0 top-full z-40 mt-1 min-w-[168px] rounded border border-[var(--color-blue)]/20 bg-white py-1 shadow-md">
-            {MORE_NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="block px-3 py-2 text-left text-sm text-[var(--color-blue)] hover:bg-[var(--color-table-tint)]"
-                onClick={() => setMoreOpen(false)}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        ) : null}
-      </div>
+      {isAdmin ? (
+        <div className="relative flex items-center" ref={siteRef}>
+          <button
+            type="button"
+            title="Site"
+            aria-label="Site"
+            aria-expanded={siteOpen}
+            className={`flex items-center gap-1 px-3.5 ${
+              siteActive
+                ? "border-b-2 border-[var(--color-blue)] font-bold"
+                : "border-b-2 border-transparent hover:border-[var(--color-blue)]/40"
+            }`}
+            onClick={() => setSiteOpen((v) => !v)}
+          >
+            Site
+            <span className="text-[10px] leading-none" aria-hidden="true">
+              ▾
+            </span>
+          </button>
+          {siteOpen ? (
+            <div className="absolute right-0 top-full z-40 mt-1 min-w-[180px] rounded border border-[var(--color-blue)]/20 bg-white py-1 shadow-md">
+              {SITE_NAV.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="block px-3 py-2 text-left text-sm text-[var(--color-blue)] hover:bg-[var(--color-table-tint)]"
+                  onClick={() => setSiteOpen(false)}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </nav>
   );
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  isAdmin = false,
+}: {
+  children: React.ReactNode;
+  isAdmin?: boolean;
+}) {
+  const pathname = usePathname();
+  if (pathname === "/login") return <>{children}</>;
+
   return (
     <div className="flex min-h-screen flex-col bg-[var(--background)]">
       <div className="sticky top-0 z-50">
         <TopBar />
-        <NavBar />
+        <NavBar isAdmin={isAdmin} />
       </div>
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-5">{children}</main>
       {/* Spec: footer not mid-page sticky — appears after full scroll */}

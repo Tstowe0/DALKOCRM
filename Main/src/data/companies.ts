@@ -8,8 +8,10 @@ import {
   PROSPECT_STATUSES,
   kindFromStatus,
   normalizeTmsStatus,
+  parseTmsStatus,
 } from "@/domain/status";
 import { addChangeLog } from "@/data/changeLogs";
+import { DEMO_USER } from "@/lib/paths";
 
 export type Company = {
   id: string;
@@ -382,7 +384,8 @@ export function listSubsidiaryRows(parentId: string): SubsidiaryRow[] {
       id: s.id,
       companyName: s.companyName,
       status: s.status,
-      tmsStatus: s.status === "Client" ? s.tmsStatus || "—" : "",
+      tmsStatus:
+        s.status === "Client" ? normalizeTmsStatus(s.tmsStatus) : "",
       primaryContact: contact?.name ?? "",
       salesperson: s.salesperson,
     };
@@ -423,7 +426,8 @@ const FIELD_COLUMN: Record<string, string> = {
 export function updateCompanyField(
   id: string,
   field: string,
-  value: string | string[] | number | boolean | null
+  value: string | string[] | number | boolean | null,
+  actorName = DEMO_USER.fullName
 ): Company {
   const existing = getCompany(id);
   if (!existing) throw new Error("Company not found");
@@ -464,6 +468,34 @@ export function updateCompanyField(
     dbValue = value == null ? null : String(value);
   }
 
+  if (field === "physicalSameAsMailing") {
+    const on = Boolean(value);
+    if (on) {
+      getDb()
+        .prepare(
+          `UPDATE companies SET
+            physical_same_as_mailing = 1,
+            physical_country = mailing_country,
+            physical_address1 = mailing_address1,
+            physical_address2 = mailing_address2,
+            physical_city = mailing_city,
+            physical_state = mailing_state,
+            physical_postal = mailing_postal,
+            updated_at = ?
+          WHERE id = ?`
+        )
+        .run(new Date().toISOString(), id);
+    } else {
+      getDb()
+        .prepare(
+          `UPDATE companies SET physical_same_as_mailing = 0, updated_at = ? WHERE id = ?`
+        )
+        .run(new Date().toISOString(), id);
+    }
+    addChangeLog(id, on ? "Physical address set to mailing" : "Physical address unlocked", actorName);
+    return getCompany(id)!;
+  }
+
   if (field === "clientType" && value === "Subsidiary" && !existing.parentAccountId) {
     // allow setting type; parent validated separately when saving parent field
   }
@@ -473,7 +505,7 @@ export function updateCompanyField(
         `UPDATE companies SET client_type = ?, parent_account_id = NULL, updated_at = ? WHERE id = ?`
       )
       .run(String(value), new Date().toISOString(), id);
-    addChangeLog(id, `Client Type changed to ${String(value)}`);
+    addChangeLog(id, `Client Type changed to ${String(value)}`, actorName);
     return getCompany(id)!;
   }
   if (field === "companyName" && !String(dbValue ?? "").trim()) {
@@ -531,7 +563,7 @@ export function updateCompanyField(
         ? value.join(", ")
         : String(value)
       : String(value ?? "");
-  addChangeLog(id, `${field} updated${display ? `: ${display}` : ""}`);
+  addChangeLog(id, `${field} updated${display ? `: ${display}` : ""}`, actorName);
 
   return getCompany(id)!;
 }
@@ -545,21 +577,28 @@ export function setCompanyLogo(id: string, logoPath: string | null): Company {
   return getCompany(id)!;
 }
 
-export function setCompanyStatus(id: string, status: string): Company {
+export function setCompanyStatus(
+  id: string,
+  status: string,
+  tmsStatus?: string,
+  actorName = DEMO_USER.fullName
+): Company {
   const existing = getCompany(id);
   if (status === "Client") {
-    const tms = normalizeTmsStatus(existing?.tmsStatus);
+    const tms =
+      parseTmsStatus(tmsStatus) ?? parseTmsStatus(existing?.tmsStatus);
+    if (!tms) throw new Error("TMS Status is required");
     getDb()
       .prepare(
         `UPDATE companies SET status = ?, tms_status = ?, updated_at = ? WHERE id = ?`
       )
-      .run(status, tms === "Deactivated" ? "Deactivated" : "Active", new Date().toISOString(), id);
+      .run(status, tms, new Date().toISOString(), id);
   } else {
     getDb()
       .prepare(`UPDATE companies SET status = ?, updated_at = ? WHERE id = ?`)
       .run(status, new Date().toISOString(), id);
   }
-  addChangeLog(id, `Status changed to ${status}`);
+  addChangeLog(id, `Status changed to ${status}`, actorName);
   return getCompany(id)!;
 }
 
@@ -622,6 +661,9 @@ export function validateCompany(input: CompanyInput): ValidationError[] {
   }
   if (!input.status?.trim()) {
     errors.push({ field: "status", message: "Status is required" });
+  }
+  if (input.status === "Client" && !parseTmsStatus(input.tmsStatus)) {
+    errors.push({ field: "tmsStatus", message: "TMS Status is required" });
   }
   return errors;
 }

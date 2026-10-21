@@ -135,3 +135,26 @@ export function updateActivity(
 export function deleteActivity(id: string): void {
   getDb().prepare(`DELETE FROM activities WHERE id = ?`).run(id);
 }
+
+export type UpcomingActivity = Activity & {
+  companyName: string;
+  companyStatus: string;
+};
+
+export function listUpcomingActivities(limit = 10): UpcomingActivity[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT a.*, c.company_name, c.status AS company_status
+       FROM activities a
+       JOIN companies c ON c.id = a.company_id
+       WHERE upper(a.status) NOT IN ('CLOSED', 'COMPLETE', 'COMPLETED', 'DONE')
+       ORDER BY CASE WHEN a.due_date = '' THEN 1 ELSE 0 END, a.due_date ASC
+       LIMIT ?`
+    )
+    .all(limit) as Array<Row & { company_name: string; company_status: string }>;
+  return rows.map((row) => ({
+    ...map(row),
+    companyName: row.company_name,
+    companyStatus: row.company_status,
+  }));
+}
